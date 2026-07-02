@@ -32,8 +32,6 @@
   }
   .font-head{font-family:'Oswald',sans-serif;letter-spacing:0.02em;}
   .stencil{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;}
-
-  /* corner-bracket reticle */
   .reticle{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .reticle-box{position:relative;width:78%;max-width:420px;aspect-ratio:3/1;}
   .corner{position:absolute;width:28px;height:28px;border:3px solid var(--amber);}
@@ -46,8 +44,6 @@
   @keyframes sweep{
     0%{top:6%;} 50%{top:94%;} 100%{top:6%;}
   }
-
-  /* toggle-button group */
   .opt-btn{
     flex:1;
     min-height:56px;
@@ -68,7 +64,6 @@
   .opt-btn.sel-pass{background:rgba(46,204,113,0.18);border-color:var(--green);color:var(--green);}
   .opt-btn.sel-fail{background:rgba(229,72,77,0.18);border-color:var(--red);color:var(--red);}
   .opt-btn.sel-neutral{background:rgba(245,166,35,0.18);border-color:var(--amber);color:var(--amber);}
-
   .param-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;}
   .param-num{
     font-family:'IBM Plex Mono',monospace;
@@ -77,12 +72,8 @@
     border-radius:4px;
     padding:2px 7px;
   }
-
-  /* toast */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;transition:all .25s ease;z-index:60;max-width:92vw;}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-
-  /* tag stamp */
   .tag{
     background:#EDEFF2;
     color:#15171a;
@@ -109,13 +100,11 @@
     transform:rotate(-6deg);
     text-transform:uppercase;
   }
-
   input[type=text], input[type=number]{
     background:var(--panel-raised);border:2px solid var(--line);color:var(--text);
     border-radius:6px;padding:12px;font-family:'IBM Plex Mono',monospace;font-size:15px;
   }
   input[type=text]:focus, input[type=number]:focus{outline:none;border-color:var(--amber);}
-
   video{transition: transform .08s linear;}
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
@@ -123,24 +112,21 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
-<!-- ===================== HEADER ===================== -->
 <header class="border-b border-[var(--line)] bg-[var(--panel)] px-4 py-3 flex items-center justify-between sticky top-0 z-40">
   <div class="flex items-center gap-3">
     <div class="w-9 h-9 rounded bg-[var(--amber)] flex items-center justify-center stencil text-black text-sm">QC</div>
     <div>
       <div class="stencil text-base leading-none">QC Terminal</div>
-      <div id="stationLabel" class="text-[11px] text-[var(--text-dim)] mt-0.5">Station: —</div>
+      <div id="stationLabel" class="text-[11px] text-[var(--text-dim)] mt-0.5">Station: -</div>
     </div>
   </div>
   <div class="flex items-center gap-2">
-    <button id="exportBtn" class="stencil text-xs px-3 h-10 rounded border border-[var(--amber)] text-[var(--amber)] active:scale-95">Export ⬇</button>
+    <button id="exportBtn" class="stencil text-xs px-3 h-10 rounded border border-[var(--amber)] text-[var(--amber)] active:scale-95">Export ↓</button>
     <button id="settingsBtn" class="w-10 h-10 rounded border border-[var(--line)] flex items-center justify-center text-[var(--text-dim)] active:scale-95" aria-label="Settings">⚙</button>
   </div>
 </header>
 
 <main class="flex-1 max-w-xl w-full mx-auto p-4 pb-28">
-
-  <!-- ===================== SCREEN 1: SCANNER ===================== -->
   <section id="scanScreen">
     <div class="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-[var(--line)]">
       <video id="video" class="w-full h-full object-cover" playsinline autoplay muted></video>
@@ -152,7 +138,7 @@
           <div class="scan-line"></div>
         </div>
       </div>
-      <div id="camStatus" class="absolute top-2 left-2 text-[11px] px-2 py-1 rounded bg-black/60 text-[var(--text-dim)]">Initializing camera…</div>
+      <div id="camStatus" class="absolute top-2 left-2 text-[11px] px-2 py-1 rounded bg-black/60 text-[var(--text-dim)]">Initializing camera...</div>
       <div class="absolute bottom-2 left-2 right-2 flex items-center gap-2 bg-black/60 rounded-lg px-3 py-2">
         <span class="text-[11px] text-[var(--text-dim)]">Zoom</span>
         <input id="zoomSlider" type="range" min="1" max="4" step="0.1" value="1" class="flex-1 accent-[var(--amber)]">
@@ -171,6 +157,7 @@
     </button>
 
     <div id="manualEntry" class="hidden mt-3 param-card">
+      <div id="manualHint" class="hidden text-xs text-[var(--amber)] mb-3"></div>
       <div class="flex gap-3 mb-3">
         <div class="flex-1">
           <label class="text-xs text-[var(--text-dim)] block mb-2">Batch (4 digits)</label>
@@ -186,19 +173,17 @@
 
     <div id="ocrOverlay" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
       <div class="text-center">
-        <div class="stencil text-[var(--amber)] text-lg mb-2 animate-pulse">Reading serial…</div>
+        <div class="stencil text-[var(--amber)] text-lg mb-2 animate-pulse">Reading serial...</div>
         <div class="text-xs text-[var(--text-dim)]">Tesseract OCR in progress</div>
       </div>
     </div>
 
-    <!-- recent submissions -->
     <div class="mt-8">
-      <div class="text-xs stencil text-[var(--text-dim)] mb-2">Recent Logs</div>
+      <div class="text-xs stencil text-[var(--text-dim)] mb-2">Activity Log</div>
       <div id="historyList" class="space-y-2"></div>
     </div>
   </section>
 
-  <!-- ===================== SCREEN 2: CHECKLIST ===================== -->
   <section id="checklistScreen" class="hidden">
     <div class="param-card flex items-center justify-between mb-4">
       <div class="flex gap-6">
@@ -223,7 +208,7 @@
 
     <div class="param-card mt-3">
       <label class="text-xs text-[var(--text-dim)] block mb-2">Notes (optional)</label>
-      <textarea id="notesInput" rows="2" class="w-full bg-[var(--panel-raised)] border-2 border-[var(--line)] rounded-lg p-3 text-sm" placeholder="Any observations…"></textarea>
+      <textarea id="notesInput" rows="2" class="w-full bg-[var(--panel-raised)] border-2 border-[var(--line)] rounded-lg p-3 text-sm" placeholder="Any observations..."></textarea>
     </div>
 
     <div id="overallBanner" class="mt-4 rounded-lg p-3 text-center stencil text-lg border-2"></div>
@@ -233,13 +218,10 @@
       <button id="submitBtn" class="flex-[2] py-4 rounded-lg bg-[var(--amber)] text-black stencil text-lg active:scale-[0.98] disabled:opacity-40">Submit</button>
     </div>
   </section>
-
 </main>
 
-<!-- ===================== TOAST ===================== -->
 <div id="toast" class="px-4 py-3 rounded-lg stencil text-sm shadow-xl"></div>
 
-<!-- ===================== TAG MODAL ===================== -->
 <div id="tagModal" class="hidden fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6">
   <div class="w-full max-w-sm">
     <div id="tagContent" class="tag"></div>
@@ -247,7 +229,6 @@
   </div>
 </div>
 
-<!-- ===================== SETTINGS MODAL ===================== -->
 <div id="settingsModal" class="hidden fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
   <div class="w-full max-w-sm param-card max-h-[90vh] overflow-y-auto">
     <div class="stencil text-lg mb-3">Terminal Settings</div>
@@ -279,7 +260,7 @@
     </div>
 
     <p class="text-[11px] text-[var(--text-dim)] mb-4 leading-relaxed">
-      Demo mode needs no account or internet connection — every submission is saved right in this browser. Use the <b>Export ⬇</b> button anytime to download everything logged so far as a real .xlsx file. Supabase/Sheets modes are optional, for teams that want logs centralized across multiple phones automatically.
+      Demo mode needs no account or internet connection - every submission is saved right in this browser. Use the <b>Export ↓</b> button anytime to download everything logged so far as a real .xlsx file. Supabase/Sheets modes are optional, for teams that want logs centralized across multiple phones automatically.
     </p>
 
     <button id="settingsCloseBtn" class="stencil w-full py-3 rounded-lg bg-[var(--amber)] text-black">Save &amp; Close</button>
@@ -287,45 +268,71 @@
 </div>
 
 <script>
-/* ============================================================
-   CONFIG
-   ============================================================ */
 const PARAMS = [
-  { key:'plug_socket_mating', label:'Plug & Socket Mating', type:'pf' },
-  { key:'resistance_value', label:'Resistance Value (5.6kΩ)', type:'pf' },
-  { key:'seal_cycle', label:'Seal Cycle', type:'pf' },
-  { key:'visual_appearance', label:'Visual Appearance', type:'yn' },
-  { key:'moulding_color', label:'Moulding Colour Verification', type:'color' },
-  { key:'golden_coating', label:'Golden Coating', type:'presmiss' },
-  { key:'insert_glue', label:'Insert Glue', type:'appmiss' },
-  { key:'rotation_smoothness', label:'Rotation Smoothness', type:'smoothrough' },
-  { key:'labelling_clear', label:'Labelling Clear', type:'yn' },
-  { key:'serial_legibility', label:'Serial Number Legibility', type:'yn' },
+  { key:'plug_socket', label:'Plug Socket', kind:'check' },
+  { key:'seal', label:'Seal', kind:'check' },
+  { key:'visual', label:'Visual', kind:'check' },
+  { key:'insert_glue', label:'Insert Glue', kind:'check' },
+  { key:'rotation', label:'Rotation', kind:'check' },
+  { key:'labelling', label:'Labelling', kind:'check' },
+  { key:'serial_number_check', label:'Serial Number', kind:'check' },
+  { key:'resistance', label:'Resistance', kind:'resistance' },
+  { key:'moulding', label:'Moulding', kind:'radio', options:['Cream','Brown Transparent'] },
+  { key:'golden_coating', label:'Golden Coating', kind:'radio', options:['Glossy','Dull'] },
 ];
 
-const OPTION_SETS = {
-  pf:          [{v:'Pass',cls:'sel-pass'},{v:'Fail',cls:'sel-fail'}],
-  yn:          [{v:'Yes',cls:'sel-pass'},{v:'No',cls:'sel-fail'}],
-  presmiss:    [{v:'Present',cls:'sel-pass'},{v:'Missing',cls:'sel-fail'}],
-  appmiss:     [{v:'Applied',cls:'sel-pass'},{v:'Missing',cls:'sel-fail'}],
-  smoothrough: [{v:'Smooth',cls:'sel-pass'},{v:'Rough',cls:'sel-fail'}],
-  color:       [{v:'Cream',cls:'sel-pass'},{v:'Transparent',cls:'sel-fail'},{v:'Brown',cls:'sel-fail'}],
+const FAIL_VALUES = {
+  plug_socket: 'Fail',
+  seal: 'Fail',
+  visual: 'Fail',
+  insert_glue: 'Fail',
+  rotation: 'Fail',
+  labelling: 'Fail',
+  serial_number_check: 'Fail',
+  resistance_verified: 'Fail',
+  moulding: 'Brown Transparent',
+  golden_coating: 'Dull',
 };
 
-// value considered a FAIL contribution to overall_status
-const FAIL_VALUES = new Set(['Fail','No','Missing','Rough','Transparent','Brown']);
-
-let state = {
-  batch: null,
-  uid: null,
-  tests: {},
-  notes: '',
-  isRetest: false,
+const PASS_VALUES = {
+  plug_socket: 'Pass',
+  seal: 'Pass',
+  visual: 'Pass',
+  insert_glue: 'Pass',
+  rotation: 'Pass',
+  labelling: 'Pass',
+  serial_number_check: 'Pass',
+  resistance_verified: 'Pass',
+  moulding: 'Cream',
+  golden_coating: 'Glossy',
 };
 
-/* ============================================================
-   SETTINGS / BACKEND CONFIG (persisted to localStorage)
-   ============================================================ */
+let state = createEmptyChecklistState();
+let historyCache = [];
+let historyBusy = false;
+
+function createEmptyChecklistState(){
+  return {
+    batch: null,
+    uid: null,
+    tests: {
+      plug_socket: 'Fail',
+      seal: 'Fail',
+      visual: 'Fail',
+      insert_glue: 'Fail',
+      rotation: 'Fail',
+      labelling: 'Fail',
+      serial_number_check: 'Fail',
+      resistance: '',
+      resistance_verified: 'Fail',
+      moulding: '',
+      golden_coating: '',
+    },
+    notes: '',
+    isRetest: false,
+  };
+}
+
 function loadSettings(){
   return {
     station: localStorage.getItem('qc_station') || 'Station 1',
@@ -335,6 +342,7 @@ function loadSettings(){
     sheetsUrl: localStorage.getItem('qc_sheets_url') || '',
   };
 }
+
 function saveSettings(s){
   localStorage.setItem('qc_station', s.station);
   localStorage.setItem('qc_mode', s.mode);
@@ -369,10 +377,11 @@ function openSettings(){
   refreshBackendFieldVisibility();
   settingsModal.classList.remove('hidden');
 }
+
 settingsBtn.onclick = openSettings;
 backendMode.onchange = refreshBackendFieldVisibility;
 
-document.getElementById('settingsCloseBtn').onclick = () => {
+document.getElementById('settingsCloseBtn').onclick = async () => {
   const s = {
     station: stationInput.value.trim() || 'Station 1',
     mode: backendMode.value,
@@ -383,33 +392,36 @@ document.getElementById('settingsCloseBtn').onclick = () => {
   saveSettings(s);
   stationLabel.textContent = 'Station: ' + s.station;
   settingsModal.classList.add('hidden');
+  await refreshHistory();
 };
 
-// init label
 stationLabel.textContent = 'Station: ' + loadSettings().station;
 
-/* ============================================================
-   BACKEND ADAPTER
-   Swap logic based on saved mode. Each function must:
-   - resolve only after a genuine success (200 OK) response
-   - reject with { duplicate: true } if the backend reports a
-     duplicate serial+station that isn't flagged as a re-test
-   ============================================================ */
 async function submitToBackend(payload){
   const s = loadSettings();
-
   if (s.mode === 'supabase') return submitToSupabase(payload, s);
-  if (s.mode === 'sheets')   return submitToSheets(payload, s);
+  if (s.mode === 'sheets') return submitToSheets(payload, s);
   return submitToDemoStore(payload);
 }
 
-// ---- Option A: Supabase ----
+async function updateBackendLog(payload){
+  const s = loadSettings();
+  if (s.mode === 'supabase') return updateSupabaseLog(payload, s);
+  if (s.mode === 'sheets') return updateSheetsLog(payload, s);
+  return updateDemoLog(payload);
+}
+
+async function fetchRecentLogs(){
+  const s = loadSettings();
+  if (s.mode === 'supabase') return fetchSupabaseLogs(s);
+  if (s.mode === 'sheets') return fetchSheetsLogs(s);
+  return demoStore();
+}
+
 async function submitToSupabase(payload, s){
   if (!s.supabaseUrl || !s.supabaseKey){
     throw new Error('Supabase URL/key not configured. Open Settings to add them.');
   }
-  // Pre-check for duplicates (defense in depth — the real guard is the
-  // unique constraint in supabase-schema.sql, see submission notes there)
   if (!payload.is_retest){
     const checkRes = await fetch(
       `${s.supabaseUrl}/rest/v1/qc_logs?serial_number=eq.${payload.serial_number}&test_station=eq.${encodeURIComponent(payload.test_station)}&select=id`,
@@ -417,7 +429,7 @@ async function submitToSupabase(payload, s){
     );
     if (checkRes.ok){
       const rows = await checkRes.json();
-      if (rows.length > 0) { const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
+      if (rows.length > 0){ const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
     }
   }
 
@@ -427,7 +439,7 @@ async function submitToSupabase(payload, s){
       'Content-Type': 'application/json',
       apikey: s.supabaseKey,
       Authorization: `Bearer ${s.supabaseKey}`,
-      Prefer: 'return=minimal',
+      Prefer: 'return=representation',
     },
     body: JSON.stringify(payload),
   });
@@ -436,42 +448,151 @@ async function submitToSupabase(payload, s){
     const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e;
   }
   if (!res.ok) throw new Error(`Supabase insert failed (${res.status})`);
-  return true; // 201 Created from PostgREST = success
+  const rows = await res.json();
+  return normalizeHistoryItem(rows[0] || payload);
 }
 
-// ---- Option B: Google Sheets via Apps Script ----
+async function updateSupabaseLog(payload, s){
+  if (!payload.id) throw new Error('Missing Supabase row id for update');
+  const res = await fetch(`${s.supabaseUrl}/rest/v1/qc_logs?id=eq.${payload.id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: s.supabaseKey,
+      Authorization: `Bearer ${s.supabaseKey}`,
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      batch_number: payload.batch_number,
+      uid_number: payload.uid_number,
+      serial_number: payload.serial_number,
+      is_retest: payload.is_retest,
+      notes: payload.notes,
+      overall_status: payload.overall_status,
+      timestamp: payload.timestamp,
+      plug_socket: payload.plug_socket,
+      seal: payload.seal,
+      visual: payload.visual,
+      insert_glue: payload.insert_glue,
+      rotation: payload.rotation,
+      labelling: payload.labelling,
+      serial_number_check: payload.serial_number_check,
+      resistance: payload.resistance,
+      resistance_verified: payload.resistance_verified,
+      moulding: payload.moulding,
+      golden_coating: payload.golden_coating,
+    }),
+  });
+  if (!res.ok) throw new Error(`Supabase update failed (${res.status})`);
+  const rows = await res.json();
+  return normalizeHistoryItem(rows[0] || payload);
+}
+
+async function fetchSupabaseLogs(s){
+  if (!s.supabaseUrl || !s.supabaseKey) return [];
+  const res = await fetch(`${s.supabaseUrl}/rest/v1/qc_logs?select=*&order=timestamp.desc&limit=8`, {
+    headers: { apikey: s.supabaseKey, Authorization: `Bearer ${s.supabaseKey}` },
+  });
+  if (!res.ok) throw new Error(`Supabase history failed (${res.status})`);
+  const rows = await res.json();
+  return rows.map(normalizeHistoryItem);
+}
+
 async function submitToSheets(payload, s){
   if (!s.sheetsUrl) throw new Error('Apps Script URL not configured. Open Settings to add it.');
-
   const res = await fetch(s.sheetsUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight on Apps Script
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Apps Script request failed (${res.status})`);
   const data = await res.json();
   if (data.status === 'duplicate'){ const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
   if (data.status !== 'ok') throw new Error(data.message || 'Unknown backend error');
-  return true;
+  return normalizeHistoryItem(data.row || payload);
 }
 
-// ---- Demo mode: localStorage, simulated latency ----
-function demoStore(){ return JSON.parse(localStorage.getItem('qc_demo_logs') || '[]'); }
+async function updateSheetsLog(payload, s){
+  if (!s.sheetsUrl) throw new Error('Apps Script URL not configured. Open Settings to add it.');
+  const res = await fetch(s.sheetsUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ ...payload, action: 'update' }),
+  });
+  if (!res.ok) throw new Error(`Apps Script request failed (${res.status})`);
+  const data = await res.json();
+  if (data.status !== 'ok') throw new Error(data.message || 'Unknown backend error');
+  return normalizeHistoryItem(data.row || payload);
+}
+
+async function fetchSheetsLogs(s){
+  if (!s.sheetsUrl) return [];
+  const url = new URL(s.sheetsUrl);
+  url.searchParams.set('action', 'recent');
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Apps Script history failed (${res.status})`);
+  const data = await res.json();
+  if (data.status !== 'ok') throw new Error(data.message || 'Unknown backend error');
+  return (data.rows || []).map(normalizeHistoryItem);
+}
+
+function demoStore(){
+  return JSON.parse(localStorage.getItem('qc_demo_logs') || '[]').map(normalizeHistoryItem);
+}
+
+function saveDemoStore(logs){
+  localStorage.setItem('qc_demo_logs', JSON.stringify(logs.slice(0, 50)));
+}
+
 async function submitToDemoStore(payload){
-  await new Promise(r => setTimeout(r, 500)); // simulate network round-trip
+  await new Promise(r => setTimeout(r, 250));
   const logs = demoStore();
   if (!payload.is_retest){
     const dupe = logs.some(l => l.serial_number === payload.serial_number && l.test_station === payload.test_station);
     if (dupe){ const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
   }
-  logs.unshift(payload);
-  localStorage.setItem('qc_demo_logs', JSON.stringify(logs.slice(0, 50)));
-  return true;
+  const saved = normalizeHistoryItem({ ...payload, local_id: payload.local_id || crypto.randomUUID() });
+  logs.unshift(saved);
+  saveDemoStore(logs);
+  return saved;
 }
 
-/* ============================================================
-   CAMERA + OCR
-   ============================================================ */
+async function updateDemoLog(payload){
+  const logs = demoStore();
+  const idx = logs.findIndex(l => l.local_id === payload.local_id || (l.serial_number === payload.serial_number && l.timestamp === payload.timestamp));
+  if (idx === -1) throw new Error('Demo log not found for update');
+  logs[idx] = normalizeHistoryItem(payload);
+  saveDemoStore(logs);
+  return logs[idx];
+}
+
+function normalizeHistoryItem(row){
+  return {
+    id: row.id,
+    row_index: row.row_index,
+    local_id: row.local_id,
+    serial_number: row.serial_number || `${row.batch_number || ''}${row.uid_number || ''}`,
+    batch_number: row.batch_number || '',
+    uid_number: row.uid_number || '',
+    timestamp: row.timestamp || new Date().toISOString(),
+    test_station: row.test_station || loadSettings().station,
+    is_retest: row.is_retest === true || row.is_retest === 'true',
+    overall_status: row.overall_status || 'FAIL',
+    notes: row.notes || '',
+    plug_socket: row.plug_socket || row.plug_socket_mating || 'Fail',
+    seal: row.seal || row.seal_cycle || 'Fail',
+    visual: row.visual || row.visual_appearance || 'Fail',
+    insert_glue: row.insert_glue || 'Fail',
+    rotation: row.rotation || row.rotation_smoothness || 'Fail',
+    labelling: row.labelling || row.labelling_clear || 'Fail',
+    serial_number_check: row.serial_number_check || row.serial_legibility || 'Fail',
+    resistance: row.resistance || row.resistance_value || '',
+    resistance_verified: row.resistance_verified || (row.resistance_value === 'Pass' ? 'Pass' : 'Fail'),
+    moulding: row.moulding || row.moulding_color || '',
+    golden_coating: row.golden_coating || row.golden || 'Dull',
+  };
+}
+
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const camStatus = document.getElementById('camStatus');
@@ -480,6 +601,10 @@ const ocrOverlay = document.getElementById('ocrOverlay');
 const reticleWrap = document.getElementById('reticleWrap');
 const zoomSlider = document.getElementById('zoomSlider');
 const zoomLabel = document.getElementById('zoomLabel');
+const manualEntry = document.getElementById('manualEntry');
+const batchInput = document.getElementById('batchInput');
+const uidInput = document.getElementById('uidInput');
+const manualHint = document.getElementById('manualHint');
 
 let videoTrack = null;
 let hwZoomCapable = false;
@@ -498,34 +623,48 @@ function setupZoomControl(stream){
       currentZoom = caps.zoom.min;
     } else {
       hwZoomCapable = false;
-      zoomSlider.min = 1; zoomSlider.max = 4; zoomSlider.step = 0.1; zoomSlider.value = 1;
+      zoomSlider.min = 1;
+      zoomSlider.max = 4;
+      zoomSlider.step = 0.1;
+      zoomSlider.value = 1;
       currentZoom = 1;
     }
-  } catch(e){
+  } catch(_err){
     hwZoomCapable = false;
   }
   zoomLabel.textContent = currentZoom.toFixed(1) + 'x';
   video.style.transform = 'scale(1)';
 }
 
+async function prepareAutoFocus(){
+  if (!videoTrack?.applyConstraints || !videoTrack.getCapabilities) return;
+  const caps = videoTrack.getCapabilities();
+  const advanced = [];
+  if (caps.focusMode?.includes?.('continuous')) advanced.push({ focusMode: 'continuous' });
+  if (caps.focusMode?.includes?.('single-shot')) advanced.push({ focusMode: 'single-shot' });
+  if (caps.exposureMode?.includes?.('continuous')) advanced.push({ exposureMode: 'continuous' });
+  if (!advanced.length) return;
+  try{
+    await videoTrack.applyConstraints({ advanced });
+    await new Promise(r => setTimeout(r, 260));
+  } catch(_err){}
+}
+
 zoomSlider.addEventListener('input', async () => {
   currentZoom = parseFloat(zoomSlider.value);
   zoomLabel.textContent = currentZoom.toFixed(1) + 'x';
   if (hwZoomCapable && videoTrack){
-    try{ await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] }); }
-    catch(e){ /* some browsers report the capability but reject the constraint — ignore and rely on capture-time crop below */ }
+    try{
+      await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+    } catch(_err){}
   } else {
-    // No hardware zoom available (common on iPhone) — this only zooms the
-    // on-screen preview for aiming; the real detail boost happens at
-    // capture time via a tighter crop in cropToReticle(). Physically
-    // moving the phone closer to the part still beats digital zoom.
     video.style.transform = `scale(${currentZoom})`;
   }
 });
 
 async function startCamera(){
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    camStatus.textContent = '⚠ Camera needs HTTPS — open this page via an https:// link, not a local file. Manual entry still works below.';
+    camStatus.textContent = '⚠ Camera needs HTTPS - open this page via an https:// link, not a local file. Manual entry still works below.';
     camStatus.classList.remove('hidden');
     captureBtn.disabled = true;
     return;
@@ -533,67 +672,66 @@ async function startCamera(){
   try{
     let stream;
     try{
-      // preferred: rear camera on phones
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          focusMode: 'continuous',
+        },
         audio: false,
       });
-    } catch(innerErr){
-      // fallback: whatever camera is available (e.g. laptops with no rear cam)
+    } catch(_innerErr){
       stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
     video.srcObject = stream;
     setupZoomControl(stream);
+    await prepareAutoFocus();
     camStatus.textContent = 'Camera ready';
     setTimeout(() => camStatus.classList.add('hidden'), 1500);
   } catch(err){
-    const reason = err.name === 'NotAllowedError' ? 'permission denied — check browser camera settings'
-                 : err.name === 'NotFoundError' ? 'no camera found on this device'
-                 : (err.message || err.name || 'unknown error');
+    const reason = err.name === 'NotAllowedError' ? 'permission denied - check browser camera settings'
+      : err.name === 'NotFoundError' ? 'no camera found on this device'
+      : (err.message || err.name || 'unknown error');
     camStatus.textContent = `⚠ Camera error: ${reason}. Manual entry still works below.`;
     camStatus.classList.remove('hidden');
     captureBtn.disabled = true;
   }
 }
+
 startCamera();
 
-// The printed code looks like 1-01-05/0226/093 — a batch number (4 digits)
-// followed by a UID (3 digits), separated by whatever character comes
-// before them. If OCR reads that separator correctly (even as the wrong
-// punctuation mark — dash, slash, space, a stray letter — anything that
-// ISN'T a digit), splitting on "any non-digit run" still finds the right
-// two segments. This is what actually fixes the "slash misread as 1"
-// problem: that failure only breaks a naive "last 7 digits" grab, because
-// the stray 1 merges into the digit run. Splitting on non-digit runs first
-// only fails if the separator was misread AS a digit specifically — a
-// narrower, less common failure than before.
-function parseSerialFromOCR(rawText){
-  const tokens = rawText.split(/[^0-9]+/).filter(Boolean);
+function parseSerialCandidate(rawText){
+  const cleaned = rawText
+    .toUpperCase()
+    .replace(/[OQ]/g, '0')
+    .replace(/[ILS]/g, m => ({ I:'1', L:'1', S:'5' }[m]));
+  const tokens = cleaned.split(/[^0-9]+/).filter(Boolean);
   if (tokens.length >= 2){
-    const uidTok = tokens[tokens.length - 1];
-    const batchTok = tokens[tokens.length - 2];
-    if (uidTok.length === 3 && batchTok.length === 4){
-      return { batch: batchTok, uid: uidTok };
+    for (let i = tokens.length - 1; i > 0; i--){
+      const uidTok = tokens[i];
+      const batchTok = tokens[i - 1];
+      if (uidTok.length === 3 && batchTok.length === 4){
+        return { batch: batchTok, uid: uidTok, strict: true };
+      }
     }
   }
-  // Fallback: couldn't find clean 4+3 segments — grab the last 7 digits
-  // of the whole run as before (less reliable, but better than nothing).
-  const digitsOnly = rawText.replace(/[^0-9]/g, '');
+  const digitsOnly = cleaned.replace(/[^0-9]/g, '');
   if (digitsOnly.length < 7) return null;
   const last7 = digitsOnly.slice(-7);
-  return { batch: last7.slice(0, 4), uid: last7.slice(4) };
-}// Crop the frame down to just the reticle window (78% width, 3:1 box,
-// centered) — feeding OCR only the framed area instead of the whole
-// picture cuts out background clutter that confuses recognition.
-function cropToReticle(sourceCanvas, digitalZoom){
-  const vw = sourceCanvas.width, vh = sourceCanvas.height;
+  return { batch: last7.slice(0, 4), uid: last7.slice(4), strict: false };
+}
+
+function cropToReticle(sourceCanvas, digitalZoom, thresholdMode){
+  const vw = sourceCanvas.width;
+  const vh = sourceCanvas.height;
   const baseCropW = vw * 0.78;
-  const cropW = baseCropW / (digitalZoom || 1); // tighter crop = more detail per character
+  const cropW = baseCropW / (digitalZoom || 1);
   const cropH = cropW / 3;
   const cropX = (vw - cropW) / 2;
   const cropY = (vh - cropH) / 2;
 
-  const scale = 2.5; // upscale — small printed text OCRs far better enlarged
+  const scale = 3;
   const out = document.createElement('canvas');
   out.width = Math.round(cropW * scale);
   out.height = Math.round(cropH * scale);
@@ -601,29 +739,27 @@ function cropToReticle(sourceCanvas, digitalZoom){
   octx.imageSmoothingEnabled = true;
   octx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, out.width, out.height);
 
-  // grayscale + contrast stretch — helps a lot on low-contrast printed/etched codes
   const imgData = octx.getImageData(0, 0, out.width, out.height);
   const d = imgData.data;
-  let min = 255, max = 0;
+  let min = 255;
+  let max = 0;
   const gray = new Uint8ClampedArray(out.width * out.height);
   for (let i = 0, p = 0; i < d.length; i += 4, p++){
-    const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
     gray[p] = g;
     if (g < min) min = g;
     if (g > max) max = g;
   }
   const range = Math.max(max - min, 1);
   for (let i = 0, p = 0; i < d.length; i += 4, p++){
-    const stretched = ((gray[p] - min) / range) * 255;
-    d[i] = d[i+1] = d[i+2] = stretched;
+    let stretched = ((gray[p] - min) / range) * 255;
+    if (thresholdMode) stretched = stretched > 155 ? 255 : 0;
+    d[i] = d[i + 1] = d[i + 2] = stretched;
   }
   octx.putImageData(imgData, 0, 0);
   return out;
 }
 
-// Reuse a single worker instead of spinning one up per scan — faster,
-// and lets us fix the page-segmentation mode to "single line" which is
-// far more accurate for a short code than the default full-page mode.
 let ocrWorkerPromise = null;
 function getOcrWorker(){
   if (!ocrWorkerPromise){
@@ -631,7 +767,8 @@ function getOcrWorker(){
       const worker = await Tesseract.createWorker('eng');
       await worker.setParameters({
         tessedit_char_whitelist: '0123456789-/ ',
-        tessedit_pageseg_mode: '7', // PSM 7 = treat image as a single text line
+        tessedit_pageseg_mode: '7',
+        preserve_interword_spaces: '1',
       });
       return worker;
     })();
@@ -639,36 +776,64 @@ function getOcrWorker(){
   return ocrWorkerPromise;
 }
 
+async function runOcrVariants(baseCanvas){
+  const worker = await getOcrWorker();
+  const variants = [
+    cropToReticle(baseCanvas, hwZoomCapable ? 1 : currentZoom, false),
+    cropToReticle(baseCanvas, hwZoomCapable ? 1 : currentZoom, true),
+  ];
+  const results = [];
+  for (const variant of variants){
+    const { data } = await worker.recognize(variant);
+    const parsed = parseSerialCandidate(data.text || '');
+    results.push({
+      text: data.text || '',
+      confidence: Number(data.confidence || 0),
+      parsed,
+      strict: parsed?.strict || false,
+      score: (parsed ? 50 : 0) + (parsed?.strict ? 30 : 0) + Number(data.confidence || 0),
+    });
+  }
+  results.sort((a, b) => b.score - a.score);
+  return results[0];
+}
+
+function openManualCorrection(message, batch = '', uid = ''){
+  manualEntry.classList.remove('hidden');
+  manualHint.textContent = message;
+  manualHint.classList.remove('hidden');
+  batchInput.value = batch;
+  uidInput.value = uid;
+  batchInput.focus();
+}
+
 captureBtn.addEventListener('click', async () => {
   if (!video.srcObject) return;
   reticleWrap.classList.add('scanning');
   ocrOverlay.classList.remove('hidden');
   captureBtn.disabled = true;
+  await prepareAutoFocus();
 
-  const w = video.videoWidth, h = video.videoHeight;
-  canvas.width = w; canvas.height = h;
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, w, h);
 
   try{
-    const digitalZoom = hwZoomCapable ? 1 : currentZoom;
-    const processed = cropToReticle(canvas, digitalZoom);
-    const worker = await getOcrWorker();
-    const { data: { text } } = await worker.recognize(processed);
-    const parsed = parseSerialFromOCR(text);
-    if (parsed){
-      openChecklist(parsed.batch, parsed.uid);
+    const best = await runOcrVariants(canvas);
+    if (best.parsed && best.confidence >= 72 && best.strict){
+      manualHint.classList.add('hidden');
+      openChecklist(best.parsed.batch, best.parsed.uid);
     } else {
-      const digitsFound = text.replace(/[^0-9]/g, '');
-      showToast('Couldn\'t confirm batch/UID — check & correct below', 'fail');
-      manualEntry.classList.remove('hidden');
-      batchInput.value = digitsFound.slice(-7, -3);
-      uidInput.value = digitsFound.slice(-3);
-      batchInput.focus();
+      const parsed = best.parsed || { batch:'', uid:'' };
+      showToast('Low OCR confidence - confirm serial before continuing', 'fail');
+      openManualCorrection('Please confirm or correct the OCR result before continuing.', parsed.batch, parsed.uid);
     }
-  } catch(err){
-    showToast('OCR error — try again or enter manually', 'fail');
-    manualEntry.classList.remove('hidden');
+  } catch(_err){
+    showToast('OCR error - try again or enter manually', 'fail');
+    openManualCorrection('OCR could not confirm the serial. Please enter it manually.');
   } finally {
     reticleWrap.classList.remove('scanning');
     ocrOverlay.classList.add('hidden');
@@ -676,23 +841,20 @@ captureBtn.addEventListener('click', async () => {
   }
 });
 
-// manual entry — batch (4 digits) and UID (3 digits) as separate fields
-const manualToggleBtn = document.getElementById('manualToggleBtn');
-const manualEntry = document.getElementById('manualEntry');
-const batchInput = document.getElementById('batchInput');
-const uidInput = document.getElementById('uidInput');
-manualToggleBtn.onclick = () => manualEntry.classList.toggle('hidden');
+document.getElementById('manualToggleBtn').onclick = () => {
+  manualEntry.classList.toggle('hidden');
+  manualHint.classList.add('hidden');
+};
+
 document.getElementById('manualSubmitBtn').onclick = () => {
   const batch = batchInput.value.replace(/[^0-9]/g, '');
   const uid = uidInput.value.replace(/[^0-9]/g, '');
   if (batch.length !== 4){ showToast('Batch must be exactly 4 digits', 'fail'); return; }
   if (uid.length !== 3){ showToast('UID must be exactly 3 digits', 'fail'); return; }
+  manualHint.classList.add('hidden');
   openChecklist(batch, uid);
 };
 
-/* ============================================================
-   CHECKLIST SCREEN
-   ============================================================ */
 const scanScreen = document.getElementById('scanScreen');
 const checklistScreen = document.getElementById('checklistScreen');
 const batchDisplay = document.getElementById('batchDisplay');
@@ -701,22 +863,21 @@ const paramsWrap = document.getElementById('paramsWrap');
 const overallBanner = document.getElementById('overallBanner');
 const submitBtn = document.getElementById('submitBtn');
 const retestCheck = document.getElementById('retestCheck');
+const notesInput = document.getElementById('notesInput');
 
 function openChecklist(batch, uid){
+  state = createEmptyChecklistState();
   state.batch = batch;
   state.uid = uid;
-  state.tests = {};
-  state.notes = '';
-  state.isRetest = false;
-  retestCheck.checked = false;
   batchDisplay.textContent = batch;
   uidDisplay.textContent = uid;
-  document.getElementById('notesInput').value = '';
-  renderParams();
+  notesInput.value = '';
+  retestCheck.checked = false;
+  renderChecklistParams();
   updateOverall();
   scanScreen.classList.add('hidden');
   checklistScreen.classList.remove('hidden');
-  window.scrollTo(0,0);
+  window.scrollTo(0, 0);
 }
 
 document.getElementById('editSerialBtn').onclick = () => {
@@ -726,57 +887,121 @@ document.getElementById('editSerialBtn').onclick = () => {
   batchInput.value = state.batch || '';
   uidInput.value = state.uid || '';
 };
+
 document.getElementById('cancelBtn').onclick = () => {
   checklistScreen.classList.add('hidden');
   scanScreen.classList.remove('hidden');
 };
+
 retestCheck.onchange = () => { state.isRetest = retestCheck.checked; };
 
-function renderParams(){
+function renderChecklistParams(){
   paramsWrap.innerHTML = '';
-  PARAMS.forEach((p, idx) => {
+  PARAMS.forEach((param, idx) => {
     const card = document.createElement('div');
     card.className = 'param-card';
-    const optionsHtml = OPTION_SETS[p.type].map(opt => `
-      <button type="button" data-key="${p.key}" data-val="${opt.v}" data-cls="${opt.cls}" class="opt-btn">${opt.v}</button>
-    `).join('');
     card.innerHTML = `
       <div class="flex items-center gap-2 mb-2.5">
-        <span class="param-num">${String(idx+1).padStart(2,'0')}</span>
-        <span class="text-sm font-medium">${p.label}</span>
+        <span class="param-num">${String(idx + 1).padStart(2, '0')}</span>
+        <span class="text-sm font-medium">${param.label}</span>
       </div>
-      <div class="flex gap-2">${optionsHtml}</div>
+      <div data-control="${param.key}"></div>
     `;
     paramsWrap.appendChild(card);
-  });
-
-  paramsWrap.querySelectorAll('.opt-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const { key, val, cls } = btn.dataset;
-      state.tests[key] = val;
-      paramsWrap.querySelectorAll(`[data-key="${key}"]`).forEach(b => {
-        b.classList.remove('sel-pass','sel-fail');
-      });
-      btn.classList.add(cls);
-      updateOverall();
+    const host = card.querySelector('[data-control]');
+    renderParamControl(host, param, state.tests, {
+      compact: false,
+      onChange: (patch) => {
+        Object.assign(state.tests, patch);
+        updateOverall();
+      }
     });
   });
 }
 
-function allAnswered(){
-  return PARAMS.every(p => state.tests[p.key]);
+function renderParamControl(host, param, source, options){
+  if (param.kind === 'check'){
+    const checked = source[param.key] === 'Pass';
+    host.innerHTML = `
+      <label class="flex items-center gap-3 rounded-lg border-2 border-[var(--line)] bg-[var(--panel-raised)] px-4 py-3">
+        <input type="checkbox" class="w-5 h-5 accent-[var(--amber)]" ${checked ? 'checked' : ''}>
+        <span class="stencil text-sm ${checked ? 'text-[var(--green)]' : 'text-[var(--text-dim)]'}">Pass</span>
+      </label>
+    `;
+    const input = host.querySelector('input');
+    input.addEventListener('change', () => {
+      options.onChange({ [param.key]: input.checked ? 'Pass' : 'Fail' });
+      if (options.compact) renderHistory();
+    });
+    return;
+  }
+
+  if (param.kind === 'radio'){
+    const buttons = param.options.map(option => {
+      const active = source[param.key] === option;
+      const failish = FAIL_VALUES[param.key] === option;
+      const cls = active ? (failish ? 'sel-fail' : 'sel-pass') : '';
+      return `<button type="button" data-option="${option}" class="opt-btn ${cls}">${option}</button>`;
+    }).join('');
+    host.innerHTML = `<div class="flex gap-2">${buttons}</div>`;
+    host.querySelectorAll('button').forEach(button => {
+      button.addEventListener('click', () => {
+        options.onChange({ [param.key]: button.dataset.option });
+        if (options.compact) renderHistory();
+        else renderChecklistParams();
+      });
+    });
+    return;
+  }
+
+  if (param.kind === 'resistance'){
+    const numeric = source.resistance || '';
+    const verified = source.resistance_verified === 'Pass';
+    host.innerHTML = `
+      <div class="flex gap-3 items-center">
+        <input type="number" step="0.1" inputmode="decimal" value="${numeric}" placeholder="Resistance" class="flex-1">
+        <label class="flex items-center gap-2 rounded-lg border-2 border-[var(--line)] bg-[var(--panel-raised)] px-4 py-3">
+          <input type="checkbox" class="w-5 h-5 accent-[var(--amber)]" ${verified ? 'checked' : ''}>
+          <span class="stencil text-sm ${verified ? 'text-[var(--green)]' : 'text-[var(--text-dim)]'}">5.6</span>
+        </label>
+      </div>
+    `;
+    const input = host.querySelector('input[type="number"]');
+    const check = host.querySelector('input[type="checkbox"]');
+    const apply = () => {
+      options.onChange({
+        resistance: input.value.trim(),
+        resistance_verified: check.checked ? 'Pass' : 'Fail',
+      });
+      if (options.compact) renderHistory();
+    };
+    input.addEventListener('input', () => {
+      if (!options.compact) apply();
+    });
+    input.addEventListener('change', apply);
+    input.addEventListener('blur', apply);
+    check.addEventListener('change', apply);
+  }
 }
 
-function computeOverallStatus(){
-  const anyFail = PARAMS.some(p => FAIL_VALUES.has(state.tests[p.key]));
+function allAnswered(){
+  return Boolean(state.tests.resistance && state.tests.moulding && state.tests.golden_coating);
+}
+
+function computeOverallStatus(source = state.tests){
+  if (!source.resistance || !source.moulding || !source.golden_coating) return 'FAIL';
+  const anyFail = Object.entries(FAIL_VALUES).some(([key, failValue]) => source[key] === failValue);
   return anyFail ? 'FAIL' : 'PASS';
 }
 
 function updateOverall(){
-  const answered = allAnswered();
-  submitBtn.disabled = !answered;
-  if (!answered){
-    overallBanner.textContent = `${PARAMS.filter(p=>!state.tests[p.key]).length} parameter(s) remaining`;
+  const missing = [];
+  if (!state.tests.resistance) missing.push('Resistance');
+  if (!state.tests.moulding) missing.push('Moulding');
+  if (!state.tests.golden_coating) missing.push('Golden Coating');
+  submitBtn.disabled = !allAnswered();
+  if (missing.length){
+    overallBanner.textContent = `${missing.length} parameter(s) remaining`;
     overallBanner.style.borderColor = 'var(--line)';
     overallBanner.style.color = 'var(--text-dim)';
     return;
@@ -787,38 +1012,47 @@ function updateOverall(){
   overallBanner.style.color = status === 'PASS' ? 'var(--green)' : 'var(--red)';
 }
 
-/* ============================================================
-   SUBMIT
-   ============================================================ */
-submitBtn.addEventListener('click', async () => {
-  if (!allAnswered()) return;
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Logging…';
-
-  const s = loadSettings();
-  const serial = `${state.batch}${state.uid}`;
-  const payload = {
-    serial_number: serial,
+function buildPayloadFromState(){
+  return normalizeHistoryItem({
+    serial_number: `${state.batch}${state.uid}`,
     batch_number: state.batch,
     uid_number: state.uid,
     timestamp: new Date().toISOString(),
-    test_station: s.station,
+    test_station: loadSettings().station,
     is_retest: state.isRetest,
     overall_status: computeOverallStatus(),
-    notes: document.getElementById('notesInput').value.trim(),
-    ...state.tests,
-  };
+    notes: notesInput.value.trim(),
+    plug_socket: state.tests.plug_socket,
+    seal: state.tests.seal,
+    visual: state.tests.visual,
+    insert_glue: state.tests.insert_glue,
+    rotation: state.tests.rotation,
+    labelling: state.tests.labelling,
+    serial_number_check: state.tests.serial_number_check,
+    resistance: state.tests.resistance,
+    resistance_verified: state.tests.resistance_verified,
+    moulding: state.tests.moulding,
+    golden_coating: state.tests.golden_coating,
+  });
+}
+
+submitBtn.addEventListener('click', async () => {
+  if (!allAnswered()) return;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Logging...';
 
   try{
-    await submitToBackend(payload); // resolves only on genuine 200/201 success
-    showToast('✅ Logged to Database', 'pass');
-    addHistoryItem(payload);
-    showTag(payload);
+    const saved = await submitToBackend(buildPayloadFromState());
+    showToast('Logged to Database', 'pass');
+    historyCache.unshift(saved);
+    historyCache = historyCache.slice(0, 8);
+    renderHistory();
+    showTag(saved);
   } catch(err){
     if (err.duplicate){
-      showToast('⛔ Duplicate serial at this station — flag re-test to override', 'fail');
+      showToast('Duplicate serial at this station - flag re-test to override', 'fail');
     } else {
-      showToast('⚠ ' + (err.message || 'Submission failed — not logged'), 'fail');
+      showToast((err.message || 'Submission failed - not logged'), 'fail');
     }
   } finally {
     submitBtn.disabled = false;
@@ -826,9 +1060,6 @@ submitBtn.addEventListener('click', async () => {
   }
 });
 
-/* ============================================================
-   TOAST + TAG + HISTORY
-   ============================================================ */
 const toastEl = document.getElementById('toast');
 function showToast(msg, kind){
   toastEl.textContent = msg;
@@ -846,12 +1077,13 @@ function showTag(payload){
     <div class="text-[11px] text-gray-500 mb-1">SERIAL</div>
     <div class="text-2xl font-bold tracking-widest mb-3">${payload.serial_number}</div>
     <div class="text-[11px] text-gray-500 mb-1">STATION / TIME</div>
-    <div class="text-sm mb-3">${payload.test_station} — ${new Date(payload.timestamp).toLocaleString()}</div>
+    <div class="text-sm mb-3">${payload.test_station} - ${new Date(payload.timestamp).toLocaleString()}</div>
     <div class="stamp" style="color:${statusColor}">${payload.overall_status}</div>
     ${payload.is_retest ? '<div class="text-[11px] mt-3 text-amber-700">RE-TEST</div>' : ''}
   `;
   tagModal.classList.remove('hidden');
 }
+
 document.getElementById('tagCloseBtn').onclick = () => {
   tagModal.classList.add('hidden');
   checklistScreen.classList.add('hidden');
@@ -859,34 +1091,138 @@ document.getElementById('tagCloseBtn').onclick = () => {
   batchInput.value = '';
   uidInput.value = '';
   manualEntry.classList.add('hidden');
+  manualHint.classList.add('hidden');
 };
 
 const historyList = document.getElementById('historyList');
-function addHistoryItem(payload){
-  const row = document.createElement('div');
-  row.className = 'param-card flex items-center justify-between py-2.5';
-  const color = payload.overall_status === 'PASS' ? 'var(--green)' : 'var(--red)';
-  row.innerHTML = `
-    <div>
-      <div class="text-sm font-semibold tracking-widest">${payload.serial_number}</div>
-      <div class="text-[11px] text-[var(--text-dim)]">${new Date(payload.timestamp).toLocaleTimeString()}${payload.is_retest ? ' · re-test' : ''}</div>
-    </div>
-    <div class="stencil text-sm" style="color:${color}">${payload.overall_status}</div>
+
+function buildHistorySummary(item){
+  return [
+    { key:'plug_socket', label:'Plug Socket', value:item.plug_socket },
+    { key:'seal', label:'Seal', value:item.seal },
+    { key:'visual', label:'Visual', value:item.visual },
+    { key:'insert_glue', label:'Insert Glue', value:item.insert_glue },
+    { key:'rotation', label:'Rotation', value:item.rotation },
+    { key:'labelling', label:'Labelling', value:item.labelling },
+    { key:'serial_number_check', label:'Serial Number', value:item.serial_number_check },
+    { key:'resistance', label:'Resistance', value:`${item.resistance || '-'} / ${item.resistance_verified}` },
+    { key:'moulding', label:'Moulding', value:item.moulding || '-' },
+    { key:'golden_coating', label:'Golden', value:item.golden_coating || '-' },
+  ];
+}
+
+function renderHistory(){
+  historyList.innerHTML = '';
+  if (!historyCache.length){
+    historyList.innerHTML = '<div class="param-card text-[12px] text-[var(--text-dim)]">No activity logged yet.</div>';
+    return;
+  }
+
+  historyCache.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'param-card';
+    const color = item.overall_status === 'PASS' ? 'var(--green)' : 'var(--red)';
+    row.innerHTML = `
+      <button type="button" class="w-full text-left flex items-center justify-between gap-3" data-toggle="${index}">
+        <div>
+          <div class="text-sm font-semibold tracking-widest">${item.serial_number}</div>
+          <div class="text-[11px] text-[var(--text-dim)]">${new Date(item.timestamp).toLocaleTimeString()}${item.is_retest ? ' · re-test' : ''}</div>
+        </div>
+        <div class="text-right">
+          <div class="stencil text-sm" style="color:${color}">${item.overall_status}</div>
+          <div class="text-[10px] text-[var(--text-dim)] mt-1">Tap to edit</div>
+        </div>
+      </button>
+      <div class="mt-3 pt-3 border-t border-[var(--line)] ${item.expanded ? '' : 'hidden'}" data-body="${index}"></div>
+    `;
+    historyList.appendChild(row);
+    row.querySelector('[data-toggle]').addEventListener('click', () => {
+      historyCache[index].expanded = !historyCache[index].expanded;
+      renderHistory();
+    });
+    if (item.expanded){
+      renderHistoryBody(row.querySelector('[data-body]'), item);
+    }
+  });
+}
+
+function renderHistoryBody(host, item){
+  const top = document.createElement('div');
+  top.className = 'grid grid-cols-2 gap-2 mb-3';
+  buildHistorySummary(item).forEach(summary => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'rounded border border-[var(--line)] bg-[var(--panel-raised)] px-2 py-2 text-left';
+    chip.innerHTML = `<div class="text-[10px] text-[var(--text-dim)]">${summary.label}</div><div class="text-[11px] mt-1">${summary.value}</div>`;
+    if (['plug_socket','seal','visual','insert_glue','rotation','labelling','serial_number_check'].includes(summary.key)){
+      chip.addEventListener('click', async () => {
+        await patchHistoryItem(item, { [summary.key]: item[summary.key] === 'Pass' ? 'Fail' : 'Pass' });
+      });
+    }
+    top.appendChild(chip);
+  });
+  host.appendChild(top);
+
+  PARAMS.forEach(param => {
+    const block = document.createElement('div');
+    block.className = 'mb-3';
+    block.innerHTML = `<div class="text-[11px] text-[var(--text-dim)] mb-2">${param.label}</div>`;
+    const control = document.createElement('div');
+    block.appendChild(control);
+    renderParamControl(control, param, item, {
+      compact: true,
+      onChange: (patch) => patchHistoryItem(item, patch),
+    });
+    host.appendChild(block);
+  });
+
+  const notesWrap = document.createElement('div');
+  notesWrap.className = 'mt-2';
+  notesWrap.innerHTML = `
+    <label class="text-[11px] text-[var(--text-dim)] block mb-2">Notes</label>
+    <textarea rows="2" class="w-full bg-[var(--panel-raised)] border-2 border-[var(--line)] rounded-lg p-3 text-sm">${item.notes || ''}</textarea>
   `;
-  historyList.prepend(row);
+  const notesArea = notesWrap.querySelector('textarea');
+  let notesTimer = null;
+  notesArea.addEventListener('input', () => {
+    clearTimeout(notesTimer);
+    notesTimer = setTimeout(() => patchHistoryItem(item, { notes: notesArea.value.trim() }, false), 400);
+  });
+  host.appendChild(notesWrap);
 }
 
-// preload demo history if present
-if (loadSettings().mode === 'demo'){
-  demoStore().slice(0,8).reverse().forEach(addHistoryItem);
+async function patchHistoryItem(item, patch, toastOnSuccess = true){
+  if (historyBusy) return;
+  historyBusy = true;
+  const previous = { ...item };
+  Object.assign(item, patch);
+  item.overall_status = computeOverallStatus(item);
+  item.timestamp = new Date().toISOString();
+  renderHistory();
+  try{
+    const saved = await updateBackendLog(item);
+    Object.assign(item, saved, { expanded: true });
+    if (toastOnSuccess) showToast('Activity log updated', 'pass');
+  } catch(err){
+    Object.assign(item, previous);
+    renderHistory();
+    showToast(err.message || 'Update failed', 'fail');
+  } finally {
+    historyBusy = false;
+    renderHistory();
+  }
 }
 
-/* ============================================================
-   EXPORT TO EXCEL (.xlsx) — no account, no backend, no internet
-   required. Pulls whatever is stored locally in this browser
-   (i.e. everything logged in Demo mode) and downloads a real
-   spreadsheet file, ready to email/AirDrop/USB off the phone.
-   ============================================================ */
+async function refreshHistory(){
+  try{
+    historyCache = (await fetchRecentLogs()).slice(0, 8).map(item => ({ ...item, expanded: false }));
+  } catch(err){
+    historyCache = [];
+    showToast(err.message || 'Could not load activity log', 'fail');
+  }
+  renderHistory();
+}
+
 function exportToExcel(){
   const logs = demoStore();
   if (!logs.length){
@@ -894,24 +1230,25 @@ function exportToExcel(){
     return;
   }
   const rows = logs.slice().reverse().map(l => ({
-    'Timestamp':            new Date(l.timestamp).toLocaleString(),
-    'Serial Number':        l.serial_number,
-    'Batch Number':         l.batch_number || l.serial_number.slice(0,4),
-    'UID':                  l.uid_number || l.serial_number.slice(4),
-    'Test Station':         l.test_station,
-    'Overall Status':       l.overall_status,
-    'Re-test':              l.is_retest ? 'Yes' : 'No',
-    'Plug & Socket Mating': l.plug_socket_mating,
-    'Resistance Value':     l.resistance_value,
-    'Seal Cycle':           l.seal_cycle,
-    'Visual Appearance':    l.visual_appearance,
-    'Moulding Colour':      l.moulding_color,
-    'Golden Coating':       l.golden_coating,
-    'Insert Glue':          l.insert_glue,
-    'Rotation Smoothness':  l.rotation_smoothness,
-    'Labelling Clear':      l.labelling_clear,
-    'Serial Legibility':    l.serial_legibility,
-    'Notes':                l.notes || '',
+    'Timestamp': new Date(l.timestamp).toLocaleString(),
+    'Serial Number': l.serial_number,
+    'Batch Number': l.batch_number || l.serial_number.slice(0, 4),
+    'UID': l.uid_number || l.serial_number.slice(4),
+    'Test Station': l.test_station,
+    'Overall Status': l.overall_status,
+    'Re-test': l.is_retest ? 'Yes' : 'No',
+    'Plug Socket': l.plug_socket,
+    'Seal': l.seal,
+    'Visual': l.visual,
+    'Insert Glue': l.insert_glue,
+    'Rotation': l.rotation,
+    'Labelling': l.labelling,
+    'Serial Number Check': l.serial_number_check,
+    'Resistance': l.resistance,
+    'Resistance Verified': l.resistance_verified,
+    'Moulding': l.moulding,
+    'Golden Coating': l.golden_coating,
+    'Notes': l.notes || '',
   }));
 
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -919,12 +1256,13 @@ function exportToExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'QC Logs');
 
-  const dateStr = new Date().toISOString().slice(0,10);
+  const dateStr = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `QC_Logs_${dateStr}.xlsx`);
   showToast(`Exported ${rows.length} log(s) to Excel`, 'pass');
 }
 
 document.getElementById('exportBtn').addEventListener('click', exportToExcel);
+refreshHistory();
 </script>
 </body>
 </html>
