@@ -131,6 +131,7 @@
     <div class="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-[var(--line)]">
       <video id="video" class="w-full h-full object-cover" playsinline autoplay muted></video>
       <canvas id="canvas" class="hidden"></canvas>
+      <canvas id="detectionCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
       <div id="reticleWrap" class="reticle">
         <div class="reticle-box">
           <div class="corner tl"></div><div class="corner tr"></div>
@@ -155,6 +156,14 @@
     <button id="manualToggleBtn" class="w-full mt-3 py-3 rounded-lg border border-[var(--line)] text-[var(--text-dim)] text-sm active:scale-[0.98]">
       Enter serial manually
     </button>
+
+    <div id="batchReuseBar" class="hidden mt-3 param-card flex items-center justify-between">
+      <div>
+        <div class="text-[11px] text-[var(--text-dim)]">Current batch (reused automatically)</div>
+        <div id="batchReuseValue" class="text-lg font-bold tracking-widest">----</div>
+      </div>
+      <button id="changeBatchBtn" class="text-xs px-3 py-2 rounded border border-[var(--line)] text-[var(--text-dim)]">Change Batch</button>
+    </div>
 
     <div id="manualEntry" class="hidden mt-3 param-card">
       <div id="manualHint" class="hidden text-xs text-[var(--amber)] mb-3"></div>
@@ -204,6 +213,11 @@
       <span class="text-sm text-[var(--text-dim)]">Flag as re-test (bypasses duplicate check)</span>
     </label>
 
+    <label class="flex items-center gap-2 mb-4 px-1">
+      <input id="selectAllCheck" type="checkbox" class="w-5 h-5 accent-[var(--green)]">
+      <span class="text-sm stencil text-[var(--green)]">Select All - mark everything PASS</span>
+    </label>
+
     <div id="paramsWrap" class="space-y-3"></div>
 
     <div class="param-card mt-3">
@@ -239,28 +253,16 @@
     <label class="text-xs text-[var(--text-dim)] block mb-1">Backend Mode</label>
     <select id="backendMode" class="w-full mb-4 bg-[var(--panel-raised)] border-2 border-[var(--line)] rounded-lg p-3 text-sm">
       <option value="demo">Demo (local browser storage only)</option>
-      <option value="supabase">Supabase</option>
-      <option value="sheets">Google Sheets (Apps Script)</option>
+      <option value="api">MySQL REST API</option>
     </select>
 
-    <div id="supabaseFields" class="hidden space-y-2 mb-4">
-      <div>
-        <label class="text-xs text-[var(--text-dim)] block mb-1">Supabase Project URL</label>
-        <input id="supabaseUrl" type="text" class="w-full" placeholder="https://xxxx.supabase.co">
-      </div>
-      <div>
-        <label class="text-xs text-[var(--text-dim)] block mb-1">Supabase Anon Key</label>
-        <input id="supabaseKey" type="text" class="w-full" placeholder="eyJhbGciOi...">
-      </div>
-    </div>
-
-    <div id="sheetsFields" class="hidden space-y-2 mb-4">
-      <label class="text-xs text-[var(--text-dim)] block mb-1">Apps Script Web App URL</label>
-      <input id="sheetsUrl" type="text" class="w-full" placeholder="https://script.google.com/macros/s/.../exec">
+    <div id="apiFields" class="hidden space-y-2 mb-4">
+      <label class="text-xs text-[var(--text-dim)] block mb-1">API Base URL</label>
+      <input id="apiUrl" type="text" class="w-full" placeholder="https://your-service.onrender.com">
     </div>
 
     <p class="text-[11px] text-[var(--text-dim)] mb-4 leading-relaxed">
-      Demo mode needs no account or internet connection - every submission is saved right in this browser. Use the <b>Export ↓</b> button anytime to download everything logged so far as a real .xlsx file. Supabase/Sheets modes are optional, for teams that want logs centralized across multiple phones automatically.
+      Demo mode needs no account or internet connection - every submission is saved right in this browser. Use the <b>Export ↓</b> button anytime to download everything logged so far as a real .xlsx file. API mode centralizes logs across every station in real time with MySQL-backed duplicate protection and editing.
     </p>
 
     <button id="settingsCloseBtn" class="stencil w-full py-3 rounded-lg bg-[var(--amber)] text-black">Save &amp; Close</button>
@@ -276,19 +278,21 @@ const PARAMS = [
   { key:'rotation', label:'Rotation', kind:'check' },
   { key:'labelling', label:'Labelling', kind:'check' },
   { key:'serial_number_check', label:'Serial Number', kind:'check' },
-  { key:'resistance', label:'Resistance', kind:'resistance' },
+  { key:'resistance', label:'Resistance (5.5 - 5.7)', kind:'resistance' },
   { key:'moulding', label:'Moulding', kind:'radio', options:['Cream','Brown Transparent'] },
-  { key:'golden_coating', label:'Golden Coating', kind:'radio', options:['Glossy','Dull'] },
+  { key:'golden_coating', label:'Golden Coating', kind:'radio', options:['Bright','Dull'] },
 ];
 
+const CHECK_PARAM_KEYS = PARAMS.filter(p => p.kind === 'check').map(p => p.key);
+
 const FAIL_VALUES = {
-  plug_socket: 'Fail',
-  seal: 'Fail',
-  visual: 'Fail',
-  insert_glue: 'Fail',
-  rotation: 'Fail',
-  labelling: 'Fail',
-  serial_number_check: 'Fail',
+  plug_socket: 'NotConfirmed',
+  seal: 'NotConfirmed',
+  visual: 'NotConfirmed',
+  insert_glue: 'NotConfirmed',
+  rotation: 'NotConfirmed',
+  labelling: 'NotConfirmed',
+  serial_number_check: 'NotConfirmed',
   resistance_verified: 'Fail',
   moulding: 'Brown Transparent',
   golden_coating: 'Dull',
@@ -304,76 +308,77 @@ const PASS_VALUES = {
   serial_number_check: 'Pass',
   resistance_verified: 'Pass',
   moulding: 'Cream',
-  golden_coating: 'Glossy',
+  golden_coating: 'Bright',
 };
 
 let state = createEmptyChecklistState();
 let historyCache = [];
 let historyBusy = false;
+let historyVisibleCount = 20;
+
+const HISTORY_PAGE_SIZE = 20;
+const AUTO_SCAN_INTERVAL_MS = 650;
+const AUTO_CAPTURE_COOLDOWN_MS = 3500;
+const SAME_SERIAL_COOLDOWN_MS = 10000;
+const AUTO_CAPTURE_CONFIDENCE = 74;
+const MANUAL_CAPTURE_CONFIDENCE = 50;
+const OCR_TIMEOUT_MS = 6000;
 
 function createEmptyChecklistState(){
+  const tests = { resistance:'', resistance_verified:'Fail', moulding:'', golden_coating:'' };
+  CHECK_PARAM_KEYS.forEach(key => { tests[key] = ''; tests[key + '_remark'] = ''; });
   return {
     batch: null,
     uid: null,
-    tests: {
-      plug_socket: 'Fail',
-      seal: 'Fail',
-      visual: 'Fail',
-      insert_glue: 'Fail',
-      rotation: 'Fail',
-      labelling: 'Fail',
-      serial_number_check: 'Fail',
-      resistance: '',
-      resistance_verified: 'Fail',
-      moulding: '',
-      golden_coating: '',
-    },
+    tests,
     notes: '',
     isRetest: false,
+    editingRecord: null, // set when an existing record was auto-loaded; drives update vs create on submit
   };
 }
 
 function loadSettings(){
   return {
-    station: localStorage.getItem('qc_station') || 'Station 1',
+    station: localStorage.getItem('qc_station') || '',
     mode: localStorage.getItem('qc_mode') || 'demo',
-    supabaseUrl: localStorage.getItem('qc_supabase_url') || '',
-    supabaseKey: localStorage.getItem('qc_supabase_key') || '',
-    sheetsUrl: localStorage.getItem('qc_sheets_url') || '',
+    apiUrl: localStorage.getItem('qc_api_url') || '',
   };
 }
 
 function saveSettings(s){
   localStorage.setItem('qc_station', s.station);
   localStorage.setItem('qc_mode', s.mode);
-  localStorage.setItem('qc_supabase_url', s.supabaseUrl);
-  localStorage.setItem('qc_supabase_key', s.supabaseKey);
-  localStorage.setItem('qc_sheets_url', s.sheetsUrl);
+  localStorage.setItem('qc_api_url', s.apiUrl);
+  localStorage.setItem('qc_station_set', 'true'); // station has now been explicitly confirmed at least once
+}
+
+function getLastBatch(){
+  return localStorage.getItem('qc_last_batch') || '';
+}
+function setLastBatch(batch){
+  if (batch) localStorage.setItem('qc_last_batch', batch);
+}
+function clearLastBatch(){
+  localStorage.removeItem('qc_last_batch');
 }
 
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
 const stationInput = document.getElementById('stationInput');
 const backendMode = document.getElementById('backendMode');
-const supabaseFields = document.getElementById('supabaseFields');
-const sheetsFields = document.getElementById('sheetsFields');
-const supabaseUrlInput = document.getElementById('supabaseUrl');
-const supabaseKeyInput = document.getElementById('supabaseKey');
-const sheetsUrlInput = document.getElementById('sheetsUrl');
+const apiFields = document.getElementById('apiFields');
+const apiUrlInput = document.getElementById('apiUrl');
 const stationLabel = document.getElementById('stationLabel');
 
 function refreshBackendFieldVisibility(){
-  supabaseFields.classList.toggle('hidden', backendMode.value !== 'supabase');
-  sheetsFields.classList.toggle('hidden', backendMode.value !== 'sheets');
+  apiFields.classList.toggle('hidden', backendMode.value !== 'api');
 }
 
 function openSettings(){
   const s = loadSettings();
   stationInput.value = s.station;
   backendMode.value = s.mode;
-  supabaseUrlInput.value = s.supabaseUrl;
-  supabaseKeyInput.value = s.supabaseKey;
-  sheetsUrlInput.value = s.sheetsUrl;
+  apiUrlInput.value = s.apiUrl;
   refreshBackendFieldVisibility();
   settingsModal.classList.remove('hidden');
 }
@@ -385,9 +390,7 @@ document.getElementById('settingsCloseBtn').onclick = async () => {
   const s = {
     station: stationInput.value.trim() || 'Station 1',
     mode: backendMode.value,
-    supabaseUrl: supabaseUrlInput.value.trim(),
-    supabaseKey: supabaseKeyInput.value.trim(),
-    sheetsUrl: sheetsUrlInput.value.trim(),
+    apiUrl: apiUrlInput.value.trim().replace(/\/+$/, ''),
   };
   saveSettings(s);
   stationLabel.textContent = 'Station: ' + s.station;
@@ -395,175 +398,147 @@ document.getElementById('settingsCloseBtn').onclick = async () => {
   await refreshHistory();
 };
 
-stationLabel.textContent = 'Station: ' + loadSettings().station;
+stationLabel.textContent = 'Station: ' + (loadSettings().station || '-');
 
-async function submitToBackend(payload){
-  const s = loadSettings();
-  if (s.mode === 'supabase') return submitToSupabase(payload, s);
-  if (s.mode === 'sheets') return submitToSheets(payload, s);
-  return submitToDemoStore(payload);
+// Station is asked exactly once: if it's never been explicitly confirmed,
+// pop the settings panel open on load, pre-focused on the station field.
+if (!localStorage.getItem('qc_station_set')){
+  openSettings();
+  setTimeout(() => stationInput.focus(), 50);
 }
 
-async function updateBackendLog(payload){
-  const s = loadSettings();
-  if (s.mode === 'supabase') return updateSupabaseLog(payload, s);
-  if (s.mode === 'sheets') return updateSheetsLog(payload, s);
-  return updateDemoLog(payload);
-}
+/* ============================================================
+ * BACKEND SERVICE — single abstraction boundary.
+ *
+ * Every part of the app (submit handler, activity log, duplicate
+ * check) talks ONLY to BackendService, never to fetch()/localStorage
+ * directly. That's what makes it possible to swap between the
+ * local demo store and the real API by writing one new
+ * adapter object with these same four methods and pointing
+ * BackendService at it — nothing in the UI layer has to change.
+ *
+ *   BackendService.create(payload)         -> saved record
+ *   BackendService.update(payload)         -> saved record
+ *   BackendService.read()                  -> array of records
+ *   BackendService.checkDuplicate(serial)  -> record or null (GLOBAL,
+ *                                              not scoped to a station)
+ * ============================================================ */
+const BackendService = {
+  async create(payload){
+    const s = loadSettings();
+    return s.mode === 'api' ? apiAdapter.create(payload, s) : demoAdapter.create(payload);
+  },
+  async update(payload){
+    const s = loadSettings();
+    return s.mode === 'api' ? apiAdapter.update(payload, s) : demoAdapter.update(payload);
+  },
+  async read(){
+    const s = loadSettings();
+    return s.mode === 'api' ? apiAdapter.read(s) : demoAdapter.read();
+  },
+  async checkDuplicate(serial){
+    const s = loadSettings();
+    return s.mode === 'api' ? apiAdapter.checkDuplicate(serial, s) : demoAdapter.checkDuplicate(serial);
+  },
+  async exportRows(){
+    const s = loadSettings();
+    return s.mode === 'api' ? apiAdapter.exportRows(s) : demoAdapter.read();
+  },
+};
 
-async function fetchRecentLogs(){
-  const s = loadSettings();
-  if (s.mode === 'supabase') return fetchSupabaseLogs(s);
-  if (s.mode === 'sheets') return fetchSheetsLogs(s);
-  return demoStore();
-}
+/* ---- Adapter: Node/Express + MySQL REST API ---- */
+const apiAdapter = {
+  async create(payload, s){
+    if (!s.apiUrl) throw new Error('API URL not configured. Open Settings to add it.');
+    const res = await fetch(`${s.apiUrl}/api/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (res.status === 409){ const e = new Error(data.message || 'Serial already exists'); e.duplicate = true; throw e; }
+    if (!res.ok) throw new Error(data.message || `API request failed (${res.status})`);
+    return normalizeHistoryItem(data.row || payload);
+  },
+  async update(payload, s){
+    if (!s.apiUrl) throw new Error('API URL not configured. Open Settings to add it.');
+    const res = await fetch(`${s.apiUrl}/api/log/${encodeURIComponent(payload.serial_number)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.message || `API update failed (${res.status})`);
+    return normalizeHistoryItem(data.row || payload);
+  },
+  async read(s){
+    if (!s.apiUrl) return [];
+    const res = await fetch(`${s.apiUrl}/api/logs`);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.message || `API history failed (${res.status})`);
+    return (data.rows || []).map(normalizeHistoryItem);
+  },
+  async checkDuplicate(serial, s){
+    if (!s.apiUrl) return null;
+    const res = await fetch(`${s.apiUrl}/api/log/${encodeURIComponent(serial)}`);
+    if (res.status === 404) return null;
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.message || `API lookup failed (${res.status})`);
+    return normalizeHistoryItem(data.row);
+  },
+  async exportRows(s){
+    if (!s.apiUrl) return [];
+    const res = await fetch(`${s.apiUrl}/api/export`);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.message || `API export failed (${res.status})`);
+    return (data.rows || []).map(normalizeHistoryItem);
+  },
+};
 
-async function submitToSupabase(payload, s){
-  if (!s.supabaseUrl || !s.supabaseKey){
-    throw new Error('Supabase URL/key not configured. Open Settings to add them.');
-  }
-  if (!payload.is_retest){
-    const checkRes = await fetch(
-      `${s.supabaseUrl}/rest/v1/qc_logs?serial_number=eq.${payload.serial_number}&test_station=eq.${encodeURIComponent(payload.test_station)}&select=id`,
-      { headers: { apikey: s.supabaseKey, Authorization: `Bearer ${s.supabaseKey}` } }
-    );
-    if (checkRes.ok){
-      const rows = await checkRes.json();
-      if (rows.length > 0){ const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
+/* ---- Adapter: Demo / local browser storage (no account, no network) ---- */
+const demoAdapter = {
+  async create(payload){
+    await new Promise(r => setTimeout(r, 150));
+    const logs = demoStore();
+    if (!payload.is_retest && logs.some(l => l.serial_number === payload.serial_number)){
+      const e = new Error('Serial already exists — loaded for editing instead'); e.duplicate = true; throw e;
     }
-  }
-
-  const res = await fetch(`${s.supabaseUrl}/rest/v1/qc_logs`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: s.supabaseKey,
-      Authorization: `Bearer ${s.supabaseKey}`,
-      Prefer: 'return=representation',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (res.status === 409 || res.status === 400){
-    const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e;
-  }
-  if (!res.ok) throw new Error(`Supabase insert failed (${res.status})`);
-  const rows = await res.json();
-  return normalizeHistoryItem(rows[0] || payload);
-}
-
-async function updateSupabaseLog(payload, s){
-  if (!payload.id) throw new Error('Missing Supabase row id for update');
-  const res = await fetch(`${s.supabaseUrl}/rest/v1/qc_logs?id=eq.${payload.id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: s.supabaseKey,
-      Authorization: `Bearer ${s.supabaseKey}`,
-      Prefer: 'return=representation',
-    },
-    body: JSON.stringify({
-      batch_number: payload.batch_number,
-      uid_number: payload.uid_number,
-      serial_number: payload.serial_number,
-      is_retest: payload.is_retest,
-      notes: payload.notes,
-      overall_status: payload.overall_status,
-      timestamp: payload.timestamp,
-      plug_socket: payload.plug_socket,
-      seal: payload.seal,
-      visual: payload.visual,
-      insert_glue: payload.insert_glue,
-      rotation: payload.rotation,
-      labelling: payload.labelling,
-      serial_number_check: payload.serial_number_check,
-      resistance: payload.resistance,
-      resistance_verified: payload.resistance_verified,
-      moulding: payload.moulding,
-      golden_coating: payload.golden_coating,
-    }),
-  });
-  if (!res.ok) throw new Error(`Supabase update failed (${res.status})`);
-  const rows = await res.json();
-  return normalizeHistoryItem(rows[0] || payload);
-}
-
-async function fetchSupabaseLogs(s){
-  if (!s.supabaseUrl || !s.supabaseKey) return [];
-  const res = await fetch(`${s.supabaseUrl}/rest/v1/qc_logs?select=*&order=timestamp.desc&limit=8`, {
-    headers: { apikey: s.supabaseKey, Authorization: `Bearer ${s.supabaseKey}` },
-  });
-  if (!res.ok) throw new Error(`Supabase history failed (${res.status})`);
-  const rows = await res.json();
-  return rows.map(normalizeHistoryItem);
-}
-
-async function submitToSheets(payload, s){
-  if (!s.sheetsUrl) throw new Error('Apps Script URL not configured. Open Settings to add it.');
-  const res = await fetch(s.sheetsUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Apps Script request failed (${res.status})`);
-  const data = await res.json();
-  if (data.status === 'duplicate'){ const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
-  if (data.status !== 'ok') throw new Error(data.message || 'Unknown backend error');
-  return normalizeHistoryItem(data.row || payload);
-}
-
-async function updateSheetsLog(payload, s){
-  if (!s.sheetsUrl) throw new Error('Apps Script URL not configured. Open Settings to add it.');
-  const res = await fetch(s.sheetsUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ ...payload, action: 'update' }),
-  });
-  if (!res.ok) throw new Error(`Apps Script request failed (${res.status})`);
-  const data = await res.json();
-  if (data.status !== 'ok') throw new Error(data.message || 'Unknown backend error');
-  return normalizeHistoryItem(data.row || payload);
-}
-
-async function fetchSheetsLogs(s){
-  if (!s.sheetsUrl) return [];
-  const url = new URL(s.sheetsUrl);
-  url.searchParams.set('action', 'recent');
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Apps Script history failed (${res.status})`);
-  const data = await res.json();
-  if (data.status !== 'ok') throw new Error(data.message || 'Unknown backend error');
-  return (data.rows || []).map(normalizeHistoryItem);
-}
+    const saved = normalizeHistoryItem({ ...payload, local_id: payload.local_id || crypto.randomUUID() });
+    logs.unshift(saved);
+    saveDemoStore(logs);
+    return saved;
+  },
+  async update(payload){
+    const logs = demoStore();
+    const idx = logs.findIndex(l => l.local_id === payload.local_id || l.serial_number === payload.serial_number);
+    if (idx === -1) throw new Error('Local record not found for update');
+    logs[idx] = normalizeHistoryItem({ ...logs[idx], ...payload });
+    saveDemoStore(logs);
+    return logs[idx];
+  },
+  async read(){
+    return demoStore();
+  },
+  async checkDuplicate(serial){
+    const logs = demoStore();
+    return logs.find(l => l.serial_number === serial) || null;
+  },
+};
 
 function demoStore(){
   return JSON.parse(localStorage.getItem('qc_demo_logs') || '[]').map(normalizeHistoryItem);
 }
 
 function saveDemoStore(logs){
-  localStorage.setItem('qc_demo_logs', JSON.stringify(logs.slice(0, 50)));
+  localStorage.setItem('qc_demo_logs', JSON.stringify(logs));
 }
 
-async function submitToDemoStore(payload){
-  await new Promise(r => setTimeout(r, 250));
-  const logs = demoStore();
-  if (!payload.is_retest){
-    const dupe = logs.some(l => l.serial_number === payload.serial_number && l.test_station === payload.test_station);
-    if (dupe){ const e = new Error('Duplicate serial at this station'); e.duplicate = true; throw e; }
+async function safeJson(response){
+  try{
+    return await response.json();
+  } catch(_err){
+    return {};
   }
-  const saved = normalizeHistoryItem({ ...payload, local_id: payload.local_id || crypto.randomUUID() });
-  logs.unshift(saved);
-  saveDemoStore(logs);
-  return saved;
-}
-
-async function updateDemoLog(payload){
-  const logs = demoStore();
-  const idx = logs.findIndex(l => l.local_id === payload.local_id || (l.serial_number === payload.serial_number && l.timestamp === payload.timestamp));
-  if (idx === -1) throw new Error('Demo log not found for update');
-  logs[idx] = normalizeHistoryItem(payload);
-  saveDemoStore(logs);
-  return logs[idx];
 }
 
 function normalizeHistoryItem(row){
@@ -579,22 +554,38 @@ function normalizeHistoryItem(row){
     is_retest: row.is_retest === true || row.is_retest === 'true',
     overall_status: row.overall_status || 'FAIL',
     notes: row.notes || '',
-    plug_socket: row.plug_socket || row.plug_socket_mating || 'Fail',
-    seal: row.seal || row.seal_cycle || 'Fail',
-    visual: row.visual || row.visual_appearance || 'Fail',
-    insert_glue: row.insert_glue || 'Fail',
-    rotation: row.rotation || row.rotation_smoothness || 'Fail',
-    labelling: row.labelling || row.labelling_clear || 'Fail',
-    serial_number_check: row.serial_number_check || row.serial_legibility || 'Fail',
+    plug_socket: row.plug_socket || row.plug_socket_mating || '',
+    seal: row.seal || row.seal_cycle || '',
+    visual: row.visual || row.visual_appearance || '',
+    insert_glue: row.insert_glue || '',
+    rotation: row.rotation || row.rotation_smoothness || '',
+    labelling: row.labelling || row.labelling_clear || '',
+    serial_number_check: row.serial_number_check || row.serial_legibility || '',
     resistance: row.resistance || row.resistance_value || '',
     resistance_verified: row.resistance_verified || (row.resistance_value === 'Pass' ? 'Pass' : 'Fail'),
     moulding: row.moulding || row.moulding_color || '',
-    golden_coating: row.golden_coating || row.golden || 'Dull',
+    golden_coating: row.golden_coating === 'Glossy' ? 'Bright' : (row.golden_coating || row.golden || ''),
+    plug_socket_remark: row.plug_socket_remark || '',
+    seal_remark: row.seal_remark || '',
+    visual_remark: row.visual_remark || '',
+    insert_glue_remark: row.insert_glue_remark || '',
+    rotation_remark: row.rotation_remark || '',
+    labelling_remark: row.labelling_remark || '',
+    serial_number_check_remark: row.serial_number_check_remark || '',
   };
+}
+
+function sortHistoryNewestFirst(logs){
+  return logs.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+function resetHistoryVisibility(){
+  historyVisibleCount = HISTORY_PAGE_SIZE;
 }
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
+const detectionCanvas = document.getElementById('detectionCanvas');
 const camStatus = document.getElementById('camStatus');
 const captureBtn = document.getElementById('captureBtn');
 const ocrOverlay = document.getElementById('ocrOverlay');
@@ -609,6 +600,15 @@ const manualHint = document.getElementById('manualHint');
 let videoTrack = null;
 let hwZoomCapable = false;
 let currentZoom = 1;
+let autoScanTimer = null;
+let scanLoopActive = false;
+let scanInFlight = false;
+let captureInFlight = false;
+let lastAutoCaptureAt = 0;
+let lastAutoCapturedSerial = '';
+let lastAutoCapturedAtBySerial = new Map();
+let focusMetrics = [];
+let focusStable = false;
 
 function setupZoomControl(stream){
   videoTrack = stream.getVideoTracks()[0];
@@ -636,6 +636,22 @@ function setupZoomControl(stream){
   video.style.transform = 'scale(1)';
 }
 
+async function applyBestResolution(){
+  if (!videoTrack?.applyConstraints || !videoTrack.getCapabilities) return;
+  try{
+    const caps = videoTrack.getCapabilities();
+    const width = caps.width?.max || 3840;
+    const height = caps.height?.max || 2160;
+    const frameRate = Math.min(caps.frameRate?.max || 30, 30);
+    await videoTrack.applyConstraints({
+      width: { ideal: width },
+      height: { ideal: height },
+      frameRate: { ideal: frameRate },
+      advanced: [{ width }, { height }]
+    });
+  } catch(_err){}
+}
+
 async function prepareAutoFocus(){
   if (!videoTrack?.applyConstraints || !videoTrack.getCapabilities) return;
   const caps = videoTrack.getCapabilities();
@@ -643,11 +659,124 @@ async function prepareAutoFocus(){
   if (caps.focusMode?.includes?.('continuous')) advanced.push({ focusMode: 'continuous' });
   if (caps.focusMode?.includes?.('single-shot')) advanced.push({ focusMode: 'single-shot' });
   if (caps.exposureMode?.includes?.('continuous')) advanced.push({ exposureMode: 'continuous' });
+  if (caps.whiteBalanceMode?.includes?.('continuous')) advanced.push({ whiteBalanceMode: 'continuous' });
   if (!advanced.length) return;
   try{
     await videoTrack.applyConstraints({ advanced });
-    await new Promise(r => setTimeout(r, 260));
+    await new Promise(r => setTimeout(r, 220));
   } catch(_err){}
+}
+
+function getReticleCropRect(sourceWidth, sourceHeight, digitalZoom = hwZoomCapable ? 1 : currentZoom){
+  const baseCropW = sourceWidth * 0.78;
+  const cropW = baseCropW / (digitalZoom || 1);
+  const cropH = cropW / 3;
+  return {
+    x: (sourceWidth - cropW) / 2,
+    y: (sourceHeight - cropH) / 2,
+    width: cropW,
+    height: cropH,
+  };
+}
+
+function getReticleDisplayRect(){
+  const host = video.parentElement.getBoundingClientRect();
+  const reticle = document.querySelector('.reticle-box').getBoundingClientRect();
+  return {
+    x: reticle.left - host.left,
+    y: reticle.top - host.top,
+    width: reticle.width,
+    height: reticle.height,
+  };
+}
+
+function clearDetectionOverlay(){
+  const ctx = detectionCanvas.getContext('2d');
+  ctx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
+}
+
+function syncDetectionCanvasSize(){
+  const rect = detectionCanvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  detectionCanvas.width = Math.max(1, Math.round(rect.width * ratio));
+  detectionCanvas.height = Math.max(1, Math.round(rect.height * ratio));
+  const ctx = detectionCanvas.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+}
+
+function drawDetectionBox(box, confidence, accepted){
+  if (!detectionCanvas.width || !detectionCanvas.height) syncDetectionCanvasSize();
+  clearDetectionOverlay();
+  if (!box) return;
+  const ctx = detectionCanvas.getContext('2d');
+  const color = accepted ? '#2ECC71' : '#F5A623';
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = accepted ? 'rgba(46,204,113,0.12)' : 'rgba(245,166,35,0.12)';
+  ctx.fillRect(box.x, box.y, box.width, box.height);
+  ctx.strokeRect(box.x, box.y, box.width, box.height);
+  ctx.fillStyle = color;
+  ctx.font = "12px 'IBM Plex Mono'";
+  ctx.fillText(`OCR ${Math.round(confidence)}%`, box.x, Math.max(14, box.y - 8));
+}
+
+function captureVideoFrame(targetCanvas, sourceWidth = video.videoWidth, sourceHeight = video.videoHeight){
+  targetCanvas.width = sourceWidth;
+  targetCanvas.height = sourceHeight;
+  targetCanvas.getContext('2d').drawImage(video, 0, 0, sourceWidth, sourceHeight);
+  return targetCanvas;
+}
+
+function computeFocusMetric(imageData){
+  const { data, width, height } = imageData;
+  let total = 0;
+  let count = 0;
+  for (let y = 1; y < height - 1; y += 2){
+    for (let x = 1; x < width - 1; x += 2){
+      const idx = (y * width + x) * 4;
+      const center = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      const rightIdx = idx + 8;
+      const downIdx = idx + (width * 8);
+      const right = 0.299 * data[rightIdx] + 0.587 * data[rightIdx + 1] + 0.114 * data[rightIdx + 2];
+      const down = 0.299 * data[downIdx] + 0.587 * data[downIdx + 1] + 0.114 * data[downIdx + 2];
+      total += Math.abs(center - right) + Math.abs(center - down);
+      count += 2;
+    }
+  }
+  return count ? total / count : 0;
+}
+
+function updateFocusStability(){
+  if (!video.videoWidth || !video.videoHeight) return false;
+  const probe = document.createElement('canvas');
+  probe.width = 240;
+  probe.height = 160;
+  const ctx = probe.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, probe.width, probe.height);
+  const rect = getReticleCropRect(probe.width, probe.height, hwZoomCapable ? 1 : currentZoom);
+  const imageData = ctx.getImageData(rect.x, rect.y, rect.width, rect.height);
+  const metric = computeFocusMetric(imageData);
+  focusMetrics.push(metric);
+  if (focusMetrics.length > 6) focusMetrics.shift();
+  if (focusMetrics.length < 3){
+    focusStable = false;
+    return false;
+  }
+  const recent = focusMetrics.slice(-3);
+  const avg = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+  const spread = Math.max(...recent) - Math.min(...recent);
+  focusStable = avg > 18 && spread < 8;
+  return focusStable;
+}
+
+async function waitForStableFocus(maxWaitMs = 1400){
+  const start = Date.now();
+  await prepareAutoFocus();
+  while (Date.now() - start < maxWaitMs){
+    if (updateFocusStability()) return true;
+    await new Promise(r => setTimeout(r, 120));
+  }
+  return focusStable;
 }
 
 zoomSlider.addEventListener('input', async () => {
@@ -675,9 +804,9 @@ async function startCamera(){
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          focusMode: 'continuous',
+          width: { ideal: 3840 },
+          height: { ideal: 2160 },
+          aspectRatio: { ideal: 1.3333 },
         },
         audio: false,
       });
@@ -686,7 +815,12 @@ async function startCamera(){
     }
     video.srcObject = stream;
     setupZoomControl(stream);
+    await applyBestResolution();
     await prepareAutoFocus();
+    await video.play().catch(() => {});
+    syncDetectionCanvasSize();
+    window.addEventListener('resize', syncDetectionCanvasSize);
+    startAutoScanLoop();
     camStatus.textContent = 'Camera ready';
     setTimeout(() => camStatus.classList.add('hidden'), 1500);
   } catch(err){
@@ -701,7 +835,7 @@ async function startCamera(){
 
 startCamera();
 
-function parseSerialCandidate(rawText){
+function parseSerialCandidate(rawText, reuseBatch = ''){
   const cleaned = rawText
     .toUpperCase()
     .replace(/[OQ]/g, '0')
@@ -712,52 +846,100 @@ function parseSerialCandidate(rawText){
       const uidTok = tokens[i];
       const batchTok = tokens[i - 1];
       if (uidTok.length === 3 && batchTok.length === 4){
-        return { batch: batchTok, uid: uidTok, strict: true };
+        return { batch: batchTok, uid: uidTok, strict: true, reused: false };
       }
+    }
+  }
+  // Batch reuse: if we already know today's batch and the frame only
+  // shows a clean isolated 3-digit UID (common once the operator has
+  // zoomed into just the UID half of the code), reuse the known batch
+  // instead of asking the operator to re-scan the whole thing.
+  if (reuseBatch && reuseBatch.length === 4){
+    const uidOnly = tokens.find(t => t.length === 3);
+    if (uidOnly && tokens.every(t => t.length !== 4)){
+      return { batch: reuseBatch, uid: uidOnly, strict: true, reused: true };
     }
   }
   const digitsOnly = cleaned.replace(/[^0-9]/g, '');
   if (digitsOnly.length < 7) return null;
   const last7 = digitsOnly.slice(-7);
-  return { batch: last7.slice(0, 4), uid: last7.slice(4), strict: false };
+  return { batch: last7.slice(0, 4), uid: last7.slice(4), strict: false, reused: false };
 }
 
-function cropToReticle(sourceCanvas, digitalZoom, thresholdMode){
-  const vw = sourceCanvas.width;
-  const vh = sourceCanvas.height;
-  const baseCropW = vw * 0.78;
-  const cropW = baseCropW / (digitalZoom || 1);
-  const cropH = cropW / 3;
-  const cropX = (vw - cropW) / 2;
-  const cropY = (vh - cropH) / 2;
-
+function cropToReticle(sourceCanvas, digitalZoom, preprocessMode = 'threshold'){
+  const rect = getReticleCropRect(sourceCanvas.width, sourceCanvas.height, digitalZoom);
   const scale = 3;
   const out = document.createElement('canvas');
-  out.width = Math.round(cropW * scale);
-  out.height = Math.round(cropH * scale);
-  const octx = out.getContext('2d');
+  out.width = Math.round(rect.width * scale);
+  out.height = Math.round(rect.height * scale);
+  const octx = out.getContext('2d', { willReadFrequently: true });
   octx.imageSmoothingEnabled = true;
-  octx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, out.width, out.height);
+  octx.drawImage(sourceCanvas, rect.x, rect.y, rect.width, rect.height, 0, 0, out.width, out.height);
+  preprocessCanvasForOcr(out, preprocessMode);
+  out._roiRect = rect;
+  return out;
+}
 
-  const imgData = octx.getImageData(0, 0, out.width, out.height);
-  const d = imgData.data;
+function sharpenGrayscale(gray, width, height){
+  const result = new Uint8ClampedArray(gray.length);
+  for (let y = 0; y < height; y++){
+    for (let x = 0; x < width; x++){
+      const idx = y * width + x;
+      const center = gray[idx] * 5;
+      const left = gray[y * width + Math.max(0, x - 1)];
+      const right = gray[y * width + Math.min(width - 1, x + 1)];
+      const up = gray[Math.max(0, y - 1) * width + x];
+      const down = gray[Math.min(height - 1, y + 1) * width + x];
+      result[idx] = Math.max(0, Math.min(255, center - left - right - up - down));
+    }
+  }
+  return result;
+}
+
+function preprocessCanvasForOcr(targetCanvas, mode = 'threshold'){
+  const ctx = targetCanvas.getContext('2d', { willReadFrequently: true });
+  const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+  const { data, width, height } = imgData;
+  const gray = new Uint8ClampedArray(width * height);
   let min = 255;
   let max = 0;
-  const gray = new Uint8ClampedArray(out.width * out.height);
-  for (let i = 0, p = 0; i < d.length; i += 4, p++){
-    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    gray[p] = g;
-    if (g < min) min = g;
-    if (g > max) max = g;
+  for (let i = 0, p = 0; i < data.length; i += 4, p++){
+    const value = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    gray[p] = value;
+    if (value < min) min = value;
+    if (value > max) max = value;
   }
-  const range = Math.max(max - min, 1);
-  for (let i = 0, p = 0; i < d.length; i += 4, p++){
-    let stretched = ((gray[p] - min) / range) * 255;
-    if (thresholdMode) stretched = stretched > 155 ? 255 : 0;
-    d[i] = d[i + 1] = d[i + 2] = stretched;
+  const contrastRange = Math.max(1, max - min);
+  for (let i = 0; i < gray.length; i++){
+    gray[i] = Math.max(0, Math.min(255, ((gray[i] - min) / contrastRange) * 255));
   }
-  octx.putImageData(imgData, 0, 0);
-  return out;
+
+  const sharpened = sharpenGrayscale(gray, width, height);
+  const windowRadius = 7;
+  for (let y = 0; y < height; y++){
+    for (let x = 0; x < width; x++){
+      let sum = 0;
+      let count = 0;
+      for (let yy = Math.max(0, y - windowRadius); yy <= Math.min(height - 1, y + windowRadius); yy += 2){
+        for (let xx = Math.max(0, x - windowRadius); xx <= Math.min(width - 1, x + windowRadius); xx += 2){
+          sum += sharpened[yy * width + xx];
+          count++;
+        }
+      }
+      const idx = y * width + x;
+      const avg = count ? sum / count : sharpened[idx];
+      let value = sharpened[idx];
+      if (mode === 'threshold'){
+        value = value > avg * 0.92 ? 255 : 0;
+      } else if (mode === 'high-contrast'){
+        value = Math.max(0, Math.min(255, (value - avg) * 1.8 + 128));
+      }
+      const px = idx * 4;
+      data[px] = data[px + 1] = data[px + 2] = value;
+      data[px + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
 }
 
 let ocrWorkerPromise = null;
@@ -776,61 +958,105 @@ function getOcrWorker(){
   return ocrWorkerPromise;
 }
 
+function extractDetectionBox(data, processedCanvas){
+  if (!data?.words?.length) return null;
+  const digitWords = data.words.filter(word => /[0-9]{2,}/.test(word.text || ''));
+  const words = digitWords.length ? digitWords : data.words;
+  if (!words.length) return null;
+  const minX = Math.min(...words.map(word => word.bbox.x0));
+  const minY = Math.min(...words.map(word => word.bbox.y0));
+  const maxX = Math.max(...words.map(word => word.bbox.x1));
+  const maxY = Math.max(...words.map(word => word.bbox.y1));
+  const displayRect = getReticleDisplayRect();
+  return {
+    x: displayRect.x + (minX / processedCanvas.width) * displayRect.width,
+    y: displayRect.y + (minY / processedCanvas.height) * displayRect.height,
+    width: ((maxX - minX) / processedCanvas.width) * displayRect.width,
+    height: ((maxY - minY) / processedCanvas.height) * displayRect.height,
+  };
+}
+
+function withOcrTimeout(promise, ms = OCR_TIMEOUT_MS){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('OCR timed out')), ms)),
+  ]);
+}
+
 async function runOcrVariants(baseCanvas){
   const worker = await getOcrWorker();
   const variants = [
-    cropToReticle(baseCanvas, hwZoomCapable ? 1 : currentZoom, false),
-    cropToReticle(baseCanvas, hwZoomCapable ? 1 : currentZoom, true),
+    { mode: 'high-contrast', canvas: cropToReticle(baseCanvas, hwZoomCapable ? 1 : currentZoom, 'high-contrast') },
+    { mode: 'threshold', canvas: cropToReticle(baseCanvas, hwZoomCapable ? 1 : currentZoom, 'threshold') },
   ];
   const results = [];
   for (const variant of variants){
-    const { data } = await worker.recognize(variant);
-    const parsed = parseSerialCandidate(data.text || '');
+    let data;
+    try{
+      ({ data } = await withOcrTimeout(worker.recognize(variant.canvas)));
+    } catch(_timeoutErr){
+      continue; // this variant hung or failed — skip it, the other variant (or manual entry) still saves the scan
+    }
+    const parsed = parseSerialCandidate(data.text || '', getLastBatch());
+    const wordConfidence = data.words?.length
+      ? data.words.reduce((sum, word) => sum + Number(word.confidence || 0), 0) / data.words.length
+      : Number(data.confidence || 0);
     results.push({
+      mode: variant.mode,
       text: data.text || '',
       confidence: Number(data.confidence || 0),
+      wordConfidence,
       parsed,
       strict: parsed?.strict || false,
-      score: (parsed ? 50 : 0) + (parsed?.strict ? 30 : 0) + Number(data.confidence || 0),
+      box: extractDetectionBox(data, variant.canvas),
+      score: (parsed ? 50 : 0) + (parsed?.strict ? 30 : 0) + wordConfidence,
     });
+  }
+  if (!results.length){
+    return { mode:'none', text:'', confidence:0, wordConfidence:0, parsed:null, strict:false, box:null, score:0 };
   }
   results.sort((a, b) => b.score - a.score);
   return results[0];
 }
 
-function openManualCorrection(message, batch = '', uid = ''){
-  manualEntry.classList.remove('hidden');
-  manualHint.textContent = message;
-  manualHint.classList.remove('hidden');
-  batchInput.value = batch;
-  uidInput.value = uid;
-  batchInput.focus();
+function canAutoCaptureSerial(serial){
+  const now = Date.now();
+  if (!serial) return false;
+  const lastSeen = lastAutoCapturedAtBySerial.get(serial) || 0;
+  return (now - lastAutoCaptureAt) >= AUTO_CAPTURE_COOLDOWN_MS && (now - lastSeen) >= SAME_SERIAL_COOLDOWN_MS;
 }
 
-captureBtn.addEventListener('click', async () => {
-  if (!video.srcObject) return;
+async function processCapturedFrame(frameCanvas, options = {}){
+  const { autoTriggered = false } = options;
+  const best = await runOcrVariants(frameCanvas);
+  const accepted = Boolean(best.parsed && best.confidence >= MANUAL_CAPTURE_CONFIDENCE && best.strict);
+  drawDetectionBox(best.box, best.confidence, accepted);
+  if (accepted){
+    manualHint.classList.add('hidden');
+    if (autoTriggered){
+      lastAutoCaptureAt = Date.now();
+      lastAutoCapturedSerial = `${best.parsed.batch}${best.parsed.uid}`;
+      lastAutoCapturedAtBySerial.set(lastAutoCapturedSerial, lastAutoCaptureAt);
+    }
+    openChecklist(best.parsed.batch, best.parsed.uid); // async — duplicate lookup runs after the screen switches, banner shows progress
+    return;
+  }
+  const parsed = best.parsed || { batch:'', uid:'' };
+  showToast('Low OCR confidence - confirm serial before continuing', 'fail');
+  openManualCorrection('Please confirm or correct the OCR result before continuing.', parsed.batch, parsed.uid);
+}
+
+async function handleCaptureRequest(options = {}){
+  if (!video.srcObject || captureInFlight) return;
+  const { autoTriggered = false, skipFocusWait = false } = options;
+  captureInFlight = true;
   reticleWrap.classList.add('scanning');
   ocrOverlay.classList.remove('hidden');
   captureBtn.disabled = true;
-  await prepareAutoFocus();
-
-  const w = video.videoWidth;
-  const h = video.videoHeight;
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, w, h);
-
   try{
-    const best = await runOcrVariants(canvas);
-    if (best.parsed && best.confidence >= 72 && best.strict){
-      manualHint.classList.add('hidden');
-      openChecklist(best.parsed.batch, best.parsed.uid);
-    } else {
-      const parsed = best.parsed || { batch:'', uid:'' };
-      showToast('Low OCR confidence - confirm serial before continuing', 'fail');
-      openManualCorrection('Please confirm or correct the OCR result before continuing.', parsed.batch, parsed.uid);
-    }
+    if (!skipFocusWait) await waitForStableFocus();
+    captureVideoFrame(canvas);
+    await processCapturedFrame(canvas, { autoTriggered });
   } catch(_err){
     showToast('OCR error - try again or enter manually', 'fail');
     openManualCorrection('OCR could not confirm the serial. Please enter it manually.');
@@ -838,21 +1064,103 @@ captureBtn.addEventListener('click', async () => {
     reticleWrap.classList.remove('scanning');
     ocrOverlay.classList.add('hidden');
     captureBtn.disabled = false;
+    captureInFlight = false;
   }
-});
+}
+
+async function runPreviewScan(){
+  if (scanInFlight || captureInFlight || scanScreen.classList.contains('hidden') || !checklistScreen.classList.contains('hidden')) return;
+  if (!manualEntry.classList.contains('hidden')) return;
+  if (!video.srcObject || !video.videoWidth || !video.videoHeight) return;
+  scanInFlight = true;
+  try{
+    const previewCanvas = document.createElement('canvas');
+    captureVideoFrame(previewCanvas, 1280, 960);
+    const result = await runOcrVariants(previewCanvas);
+    const accepted = Boolean(result.parsed && result.strict && result.confidence >= AUTO_CAPTURE_CONFIDENCE && focusStable);
+    drawDetectionBox(result.box, result.confidence, accepted);
+    if (accepted){
+      const serial = `${result.parsed.batch}${result.parsed.uid}`;
+      if (canAutoCaptureSerial(serial)){
+        await handleCaptureRequest({ autoTriggered: true, skipFocusWait: true });
+      }
+    }
+  } catch(_err){
+    clearDetectionOverlay();
+  } finally {
+    scanInFlight = false;
+  }
+}
+
+function startAutoScanLoop(){
+  if (scanLoopActive) return;
+  scanLoopActive = true;
+  const tick = async () => {
+    if (!scanLoopActive) return;
+    updateFocusStability();
+    if (scanScreen.classList.contains('hidden') || !manualEntry.classList.contains('hidden')){
+      clearDetectionOverlay();
+    } else {
+      await runPreviewScan();
+    }
+    autoScanTimer = setTimeout(tick, AUTO_SCAN_INTERVAL_MS);
+  };
+  tick();
+}
+
+const batchReuseBar = document.getElementById('batchReuseBar');
+const batchReuseValue = document.getElementById('batchReuseValue');
+const changeBatchBtn = document.getElementById('changeBatchBtn');
+
+function refreshBatchReuseBar(){
+  const b = getLastBatch();
+  if (b){
+    batchReuseBar.classList.remove('hidden');
+    batchReuseValue.textContent = b;
+  } else {
+    batchReuseBar.classList.add('hidden');
+  }
+}
+refreshBatchReuseBar();
+
+changeBatchBtn.onclick = () => {
+  clearLastBatch();
+  refreshBatchReuseBar();
+  manualEntry.classList.remove('hidden');
+  batchInput.value = '';
+  uidInput.value = '';
+  batchInput.focus();
+  showToast('Batch cleared — scan or enter the new batch', 'pass');
+};
+
+function openManualCorrection(message, batch = '', uid = ''){
+  manualEntry.classList.remove('hidden');
+  manualHint.textContent = message;
+  manualHint.classList.remove('hidden');
+  batchInput.value = batch || getLastBatch();
+  uidInput.value = uid;
+  (batchInput.value ? uidInput : batchInput).focus();
+}
+
+captureBtn.addEventListener('click', () => handleCaptureRequest({ autoTriggered: false }));
 
 document.getElementById('manualToggleBtn').onclick = () => {
   manualEntry.classList.toggle('hidden');
   manualHint.classList.add('hidden');
+  if (!manualEntry.classList.contains('hidden')){
+    clearDetectionOverlay();
+    if (!batchInput.value) batchInput.value = getLastBatch();
+    (batchInput.value ? uidInput : batchInput).focus();
+  }
 };
 
-document.getElementById('manualSubmitBtn').onclick = () => {
+document.getElementById('manualSubmitBtn').onclick = async () => {
   const batch = batchInput.value.replace(/[^0-9]/g, '');
   const uid = uidInput.value.replace(/[^0-9]/g, '');
   if (batch.length !== 4){ showToast('Batch must be exactly 4 digits', 'fail'); return; }
   if (uid.length !== 3){ showToast('UID must be exactly 3 digits', 'fail'); return; }
   manualHint.classList.add('hidden');
-  openChecklist(batch, uid);
+  await openChecklist(batch, uid);
 };
 
 const scanScreen = document.getElementById('scanScreen');
@@ -865,7 +1173,12 @@ const submitBtn = document.getElementById('submitBtn');
 const retestCheck = document.getElementById('retestCheck');
 const notesInput = document.getElementById('notesInput');
 
-function openChecklist(batch, uid){
+async function openChecklist(batch, uid){
+  scanScreen.classList.add('hidden');
+  checklistScreen.classList.remove('hidden');
+  clearDetectionOverlay();
+  window.scrollTo(0, 0);
+
   state = createEmptyChecklistState();
   state.batch = batch;
   state.uid = uid;
@@ -873,11 +1186,38 @@ function openChecklist(batch, uid){
   uidDisplay.textContent = uid;
   notesInput.value = '';
   retestCheck.checked = false;
+  selectAllCheck.checked = false;
+  overallBanner.textContent = 'Checking for existing record…';
+  overallBanner.style.borderColor = 'var(--line)';
+  overallBanner.style.color = 'var(--text-dim)';
   renderChecklistParams();
+
+  setLastBatch(batch);
+  refreshBatchReuseBar();
+
+  // Global duplicate check — a serial that already exists ANYWHERE
+  // (any station, any earlier submission) auto-loads for editing
+  // instead of blocking submission. Submitting later becomes an
+  // update to this same record, never a second row.
+  const serial = `${batch}${uid}`;
+  try{
+    const existing = await BackendService.checkDuplicate(serial);
+    if (existing && !retestCheck.checked){
+      Object.assign(state.tests, existing);
+      state.notes = existing.notes || '';
+      notesInput.value = state.notes;
+      state.isRetest = existing.is_retest;
+      retestCheck.checked = existing.is_retest;
+      state.editingRecord = { id: existing.id, row_index: existing.row_index, local_id: existing.local_id };
+      showToast('Existing record found — loaded for editing', 'pass');
+      renderChecklistParams();
+    }
+  } catch(_err){
+    // Lookup failure (e.g. offline) shouldn't block a new inspection —
+    // proceed as a fresh entry; the create call has its own duplicate
+    // safety net server-side.
+  }
   updateOverall();
-  scanScreen.classList.add('hidden');
-  checklistScreen.classList.remove('hidden');
-  window.scrollTo(0, 0);
 }
 
 document.getElementById('editSerialBtn').onclick = () => {
@@ -886,14 +1226,28 @@ document.getElementById('editSerialBtn').onclick = () => {
   manualEntry.classList.remove('hidden');
   batchInput.value = state.batch || '';
   uidInput.value = state.uid || '';
+  clearDetectionOverlay();
 };
 
 document.getElementById('cancelBtn').onclick = () => {
   checklistScreen.classList.add('hidden');
   scanScreen.classList.remove('hidden');
+  clearDetectionOverlay();
 };
 
 retestCheck.onchange = () => { state.isRetest = retestCheck.checked; };
+
+const selectAllCheck = document.getElementById('selectAllCheck');
+selectAllCheck.addEventListener('change', () => {
+  if (!selectAllCheck.checked) return;
+  CHECK_PARAM_KEYS.forEach(key => { state.tests[key] = 'Pass'; state.tests[key + '_remark'] = ''; });
+  state.tests.moulding = 'Cream';
+  state.tests.golden_coating = 'Bright';
+  if (!state.tests.resistance) state.tests.resistance = '5.6';
+  state.tests.resistance_verified = computeResistanceVerified(state.tests.resistance);
+  renderChecklistParams();
+  updateOverall();
+});
 
 function renderChecklistParams(){
   paramsWrap.innerHTML = '';
@@ -919,20 +1273,40 @@ function renderChecklistParams(){
   });
 }
 
+function computeResistanceVerified(value){
+  const num = parseFloat(value);
+  return (!Number.isNaN(num) && num >= 5.5 && num <= 5.7) ? 'Pass' : 'Fail';
+}
+
 function renderParamControl(host, param, source, options){
   if (param.kind === 'check'){
-    const checked = source[param.key] === 'Pass';
+    const value = source[param.key] || '';
+    const remark = source[param.key + '_remark'] || '';
     host.innerHTML = `
-      <label class="flex items-center gap-3 rounded-lg border-2 border-[var(--line)] bg-[var(--panel-raised)] px-4 py-3">
-        <input type="checkbox" class="w-5 h-5 accent-[var(--amber)]" ${checked ? 'checked' : ''}>
-        <span class="stencil text-sm ${checked ? 'text-[var(--green)]' : 'text-[var(--text-dim)]'}">Pass</span>
-      </label>
+      <div class="flex gap-2 mb-2">
+        <button type="button" data-choice="Pass" class="opt-btn ${value === 'Pass' ? 'sel-pass' : ''}">Pass</button>
+        <button type="button" data-choice="NotConfirmed" class="opt-btn ${value === 'NotConfirmed' ? 'sel-fail' : ''}">Not Confirmed</button>
+      </div>
+      <textarea data-remark rows="2" placeholder="Remarks (required if Not Confirmed)"
+        class="w-full bg-[var(--panel-raised)] border-2 border-[var(--line)] rounded-lg p-2 text-xs ${value === 'NotConfirmed' ? '' : 'hidden'}">${remark}</textarea>
     `;
-    const input = host.querySelector('input');
-    input.addEventListener('change', () => {
-      options.onChange({ [param.key]: input.checked ? 'Pass' : 'Fail' });
-      if (options.compact) renderHistory();
+    const remarkArea = host.querySelector('[data-remark]');
+    host.querySelectorAll('[data-choice]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const choice = btn.dataset.choice;
+        const patch = { [param.key]: choice };
+        if (choice === 'Pass') patch[param.key + '_remark'] = '';
+        options.onChange(patch);
+        if (options.compact) renderHistory();
+        else renderChecklistParams();
+      });
     });
+    if (remarkArea){
+      remarkArea.addEventListener('input', () => {
+        options.onChange({ [param.key + '_remark']: remarkArea.value });
+        if (options.compact) renderHistory();
+      });
+    }
     return;
   }
 
@@ -959,49 +1333,65 @@ function renderParamControl(host, param, source, options){
     const verified = source.resistance_verified === 'Pass';
     host.innerHTML = `
       <div class="flex gap-3 items-center">
-        <input type="number" step="0.1" inputmode="decimal" value="${numeric}" placeholder="Resistance" class="flex-1">
-        <label class="flex items-center gap-2 rounded-lg border-2 border-[var(--line)] bg-[var(--panel-raised)] px-4 py-3">
-          <input type="checkbox" class="w-5 h-5 accent-[var(--amber)]" ${verified ? 'checked' : ''}>
-          <span class="stencil text-sm ${verified ? 'text-[var(--green)]' : 'text-[var(--text-dim)]'}">5.6</span>
-        </label>
+        <input type="number" step="0.1" inputmode="decimal" value="${numeric}" placeholder="Measured value" class="flex-1">
+        <span class="stencil text-sm px-3 py-3 rounded-lg border-2" style="border-color:${verified ? 'var(--green)' : 'var(--red)'};color:${verified ? 'var(--green)' : 'var(--red)'}">${verified ? 'PASS' : 'FAIL'}</span>
       </div>
+      <div class="text-[10px] text-[var(--text-dim)] mt-1">Auto-computed: PASS if between 5.5 and 5.7</div>
     `;
     const input = host.querySelector('input[type="number"]');
-    const check = host.querySelector('input[type="checkbox"]');
     const apply = () => {
-      options.onChange({
-        resistance: input.value.trim(),
-        resistance_verified: check.checked ? 'Pass' : 'Fail',
-      });
+      const value = input.value.trim();
+      options.onChange({ resistance: value, resistance_verified: computeResistanceVerified(value) });
       if (options.compact) renderHistory();
+      else host.parentElement && renderResistanceBadgeOnly(host, value);
     };
-    input.addEventListener('input', () => {
-      if (!options.compact) apply();
-    });
+    input.addEventListener('input', apply);
     input.addEventListener('change', apply);
     input.addEventListener('blur', apply);
-    check.addEventListener('change', apply);
   }
 }
 
+function renderResistanceBadgeOnly(host, value){
+  const verified = computeResistanceVerified(value) === 'Pass';
+  const badge = host.querySelector('span');
+  if (!badge) return;
+  badge.textContent = verified ? 'PASS' : 'FAIL';
+  badge.style.borderColor = verified ? 'var(--green)' : 'var(--red)';
+  badge.style.color = verified ? 'var(--green)' : 'var(--red)';
+}
+
+function isCheckParamAnswered(key){
+  const value = state.tests[key];
+  if (value === 'Pass') return true;
+  if (value === 'NotConfirmed') return Boolean((state.tests[key + '_remark'] || '').trim());
+  return false;
+}
+
 function allAnswered(){
-  return Boolean(state.tests.resistance && state.tests.moulding && state.tests.golden_coating);
+  return CHECK_PARAM_KEYS.every(isCheckParamAnswered)
+    && state.tests.resistance !== ''
+    && Boolean(state.tests.moulding)
+    && Boolean(state.tests.golden_coating);
 }
 
 function computeOverallStatus(source = state.tests){
   if (!source.resistance || !source.moulding || !source.golden_coating) return 'FAIL';
-  const anyFail = Object.entries(FAIL_VALUES).some(([key, failValue]) => source[key] === failValue);
-  return anyFail ? 'FAIL' : 'PASS';
+  const checksOk = CHECK_PARAM_KEYS.every(key => source[key] === 'Pass');
+  const resistanceOk = source.resistance_verified === 'Pass';
+  const mouldingOk = source.moulding === 'Cream';
+  const goldenOk = source.golden_coating === 'Bright';
+  return (checksOk && resistanceOk && mouldingOk && goldenOk) ? 'PASS' : 'FAIL';
 }
 
 function updateOverall(){
   const missing = [];
+  CHECK_PARAM_KEYS.forEach(key => { if (!isCheckParamAnswered(key)) missing.push('a checklist item'); });
   if (!state.tests.resistance) missing.push('Resistance');
   if (!state.tests.moulding) missing.push('Moulding');
   if (!state.tests.golden_coating) missing.push('Golden Coating');
   submitBtn.disabled = !allAnswered();
   if (missing.length){
-    overallBanner.textContent = `${missing.length} parameter(s) remaining`;
+    overallBanner.textContent = `${missing.length} item(s) remaining (remarks required for any Not Confirmed)`;
     overallBanner.style.borderColor = 'var(--line)';
     overallBanner.style.color = 'var(--text-dim)';
     return;
@@ -1013,7 +1403,7 @@ function updateOverall(){
 }
 
 function buildPayloadFromState(){
-  return normalizeHistoryItem({
+  const payload = {
     serial_number: `${state.batch}${state.uid}`,
     batch_number: state.batch,
     uid_number: state.uid,
@@ -1022,35 +1412,41 @@ function buildPayloadFromState(){
     is_retest: state.isRetest,
     overall_status: computeOverallStatus(),
     notes: notesInput.value.trim(),
-    plug_socket: state.tests.plug_socket,
-    seal: state.tests.seal,
-    visual: state.tests.visual,
-    insert_glue: state.tests.insert_glue,
-    rotation: state.tests.rotation,
-    labelling: state.tests.labelling,
-    serial_number_check: state.tests.serial_number_check,
-    resistance: state.tests.resistance,
-    resistance_verified: state.tests.resistance_verified,
-    moulding: state.tests.moulding,
-    golden_coating: state.tests.golden_coating,
-  });
+    ...state.tests,
+  };
+  if (state.editingRecord){
+    Object.assign(payload, state.editingRecord);
+  }
+  return normalizeHistoryItem(payload);
 }
 
 submitBtn.addEventListener('click', async () => {
   if (!allAnswered()) return;
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Logging...';
+  submitBtn.textContent = 'Logging…';
 
   try{
-    const saved = await submitToBackend(buildPayloadFromState());
-    showToast('Logged to Database', 'pass');
+    const payload = buildPayloadFromState();
+    const saved = state.editingRecord
+      ? await BackendService.update(payload)
+      : await BackendService.create(payload);
+    showToast(state.editingRecord ? 'Record updated' : 'Logged to Database', 'pass');
+    historyCache = historyCache.filter(item =>
+      !(item.local_id && item.local_id === saved.local_id) &&
+      !(item.id && item.id === saved.id) &&
+      item.serial_number !== saved.serial_number
+    );
     historyCache.unshift(saved);
-    historyCache = historyCache.slice(0, 8);
+    historyCache = sortHistoryNewestFirst(historyCache);
+    resetHistoryVisibility();
     renderHistory();
     showTag(saved);
   } catch(err){
     if (err.duplicate){
-      showToast('Duplicate serial at this station - flag re-test to override', 'fail');
+      // Race condition: someone else logged this exact serial between our
+      // lookup and our create. Reload it for editing rather than losing work.
+      showToast('This serial was just logged elsewhere — reloading for edit', 'fail');
+      await openChecklist(state.batch, state.uid);
     } else {
       showToast((err.message || 'Submission failed - not logged'), 'fail');
     }
@@ -1092,6 +1488,7 @@ document.getElementById('tagCloseBtn').onclick = () => {
   uidInput.value = '';
   manualEntry.classList.add('hidden');
   manualHint.classList.add('hidden');
+  clearDetectionOverlay();
 };
 
 const historyList = document.getElementById('historyList');
@@ -1156,7 +1553,15 @@ function renderHistoryBody(host, item){
     chip.innerHTML = `<div class="text-[10px] text-[var(--text-dim)]">${summary.label}</div><div class="text-[11px] mt-1">${summary.value}</div>`;
     if (['plug_socket','seal','visual','insert_glue','rotation','labelling','serial_number_check'].includes(summary.key)){
       chip.addEventListener('click', async () => {
-        await patchHistoryItem(item, { [summary.key]: item[summary.key] === 'Pass' ? 'Fail' : 'Pass' });
+        const key = summary.key;
+        if (item[key] === 'Pass'){
+          const remark = window.prompt('Reason for marking "Not Confirmed":', item[key + '_remark'] || '');
+          if (remark === null) return; // cancelled — leave unchanged
+          if (!remark.trim()){ showToast('A remark is required for Not Confirmed', 'fail'); return; }
+          await patchHistoryItem(item, { [key]: 'NotConfirmed', [key + '_remark']: remark.trim() });
+        } else {
+          await patchHistoryItem(item, { [key]: 'Pass', [key + '_remark']: '' });
+        }
       });
     }
     top.appendChild(chip);
@@ -1191,17 +1596,66 @@ function renderHistoryBody(host, item){
   host.appendChild(notesWrap);
 }
 
-async function patchHistoryItem(item, patch, toastOnSuccess = true){
+renderHistory = function(){
+  historyList.innerHTML = '';
+  if (!historyCache.length){
+    historyList.innerHTML = '<div class="param-card text-[12px] text-[var(--text-dim)]">No activity logged yet.</div>';
+    return;
+  }
+
+  const visibleItems = historyCache.slice(0, historyVisibleCount);
+  visibleItems.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'param-card';
+    const color = item.overall_status === 'PASS' ? 'var(--green)' : 'var(--red)';
+    const stamp = `${new Date(item.timestamp).toLocaleString()}${item.is_retest ? ' | re-test' : ''}`;
+    row.innerHTML = `
+      <button type="button" class="w-full text-left flex items-center justify-between gap-3" data-toggle="${index}">
+        <div>
+          <div class="text-sm font-semibold tracking-widest">${item.serial_number}</div>
+          <div class="text-[11px] text-[var(--text-dim)]">${stamp}</div>
+        </div>
+        <div class="text-right">
+          <div class="stencil text-sm" style="color:${color}">${item.overall_status}</div>
+          <div class="text-[10px] text-[var(--text-dim)] mt-1">Tap to edit</div>
+        </div>
+      </button>
+      <div class="mt-3 pt-3 border-t border-[var(--line)] ${item.expanded ? '' : 'hidden'}" data-body="${index}"></div>
+    `;
+    historyList.appendChild(row);
+    row.querySelector('[data-toggle]').addEventListener('click', () => {
+      historyCache[index].expanded = !historyCache[index].expanded;
+      renderHistory();
+    });
+    if (item.expanded){
+      renderHistoryBody(row.querySelector('[data-body]'), item);
+    }
+  });
+
+  if (historyVisibleCount < historyCache.length){
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'w-full py-3 rounded-lg border border-[var(--line)] text-[var(--text-dim)] text-sm active:scale-[0.98]';
+    more.textContent = `Load more (${historyCache.length - historyVisibleCount} remaining)`;
+    more.addEventListener('click', () => {
+      historyVisibleCount += HISTORY_PAGE_SIZE;
+      renderHistory();
+    });
+    historyList.appendChild(more);
+  }
+};
+
+patchHistoryItem = async function(item, patch, toastOnSuccess = true){
   if (historyBusy) return;
   historyBusy = true;
   const previous = { ...item };
   Object.assign(item, patch);
   item.overall_status = computeOverallStatus(item);
-  item.timestamp = new Date().toISOString();
   renderHistory();
   try{
-    const saved = await updateBackendLog(item);
+    const saved = await BackendService.update(item);
     Object.assign(item, saved, { expanded: true });
+    historyCache = sortHistoryNewestFirst(historyCache);
     if (toastOnSuccess) showToast('Activity log updated', 'pass');
   } catch(err){
     Object.assign(item, previous);
@@ -1211,39 +1665,50 @@ async function patchHistoryItem(item, patch, toastOnSuccess = true){
     historyBusy = false;
     renderHistory();
   }
-}
+};
 
-async function refreshHistory(){
+refreshHistory = async function(){
   try{
-    historyCache = (await fetchRecentLogs()).slice(0, 8).map(item => ({ ...item, expanded: false }));
+    historyCache = sortHistoryNewestFirst(await BackendService.read()).map(item => ({ ...item, expanded: false }));
+    resetHistoryVisibility();
   } catch(err){
     historyCache = [];
     showToast(err.message || 'Could not load activity log', 'fail');
   }
   renderHistory();
-}
+};
 
-function exportToExcel(){
-  const logs = demoStore();
+exportToExcel = async function(){
+  const logs = sortHistoryNewestFirst(await BackendService.exportRows());
   if (!logs.length){
-    showToast('No logs saved on this device yet', 'fail');
+    showToast('No logs available to export', 'fail');
     return;
   }
-  const rows = logs.slice().reverse().map(l => ({
-    'Timestamp': new Date(l.timestamp).toLocaleString(),
+  const rows = logs.map(l => ({
+    'Timestamp': l.timestamp,
     'Serial Number': l.serial_number,
     'Batch Number': l.batch_number || l.serial_number.slice(0, 4),
     'UID': l.uid_number || l.serial_number.slice(4),
     'Test Station': l.test_station,
     'Overall Status': l.overall_status,
     'Re-test': l.is_retest ? 'Yes' : 'No',
+    'Row Index': l.row_index || '',
+    'Backend ID': l.id || '',
+    'Local ID': l.local_id || '',
     'Plug Socket': l.plug_socket,
+    'Plug Socket Remark': l.plug_socket_remark || '',
     'Seal': l.seal,
+    'Seal Remark': l.seal_remark || '',
     'Visual': l.visual,
+    'Visual Remark': l.visual_remark || '',
     'Insert Glue': l.insert_glue,
+    'Insert Glue Remark': l.insert_glue_remark || '',
     'Rotation': l.rotation,
+    'Rotation Remark': l.rotation_remark || '',
     'Labelling': l.labelling,
+    'Labelling Remark': l.labelling_remark || '',
     'Serial Number Check': l.serial_number_check,
+    'Serial Number Check Remark': l.serial_number_check_remark || '',
     'Resistance': l.resistance,
     'Resistance Verified': l.resistance_verified,
     'Moulding': l.moulding,
@@ -1259,9 +1724,9 @@ function exportToExcel(){
   const dateStr = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `QC_Logs_${dateStr}.xlsx`);
   showToast(`Exported ${rows.length} log(s) to Excel`, 'pass');
-}
+};
 
-document.getElementById('exportBtn').addEventListener('click', exportToExcel);
+document.getElementById('exportBtn').onclick = () => exportToExcel();
 refreshHistory();
 </script>
 </body>
