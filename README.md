@@ -112,6 +112,21 @@ https://your-username.github.io
 5. Run the schema from [schema.sql](C:\Users\HP\Documents\scanner-prototype\qc-terminal\schema.sql).
 6. Deploy and copy the generated backend URL into the frontend `API Base URL` setting.
 
+## Scanner Engine (rewritten from scratch)
+
+The old capture-button + single-pass-OCR flow is gone. Scanning is now fully continuous:
+
+- **BarcodeDetector first.** If the browser supports it (most Android Chrome builds do; Safari/Firefox generally don't — the code detects this and skips straight to OCR there), every processed frame is checked against the native barcode API first. It's near-instant and, when it hits, treated as ground truth — no consensus wait needed.
+- **OCR fallback.** Tesseract.js runs recognition in its own Web Worker (this was always true of `createWorker` — recognition was never actually blocking the main thread), against a cropped, preprocessed region-of-interest (grayscale → denoise → unsharp mask → adaptive threshold), not the full frame.
+- **Dynamic acceptance, not a fixed threshold.** A read is accepted when either: a barcode decodes cleanly, OR the same batch+uid comes back on two consecutive processed frames, OR a single frame clears a high-confidence shortcut (82%+). This adapts to read quality automatically instead of trusting one noisy frame or demanding a rigid score every time.
+- **Hard timeout per OCR pass (3.5s).** A hung recognize() call is abandoned, not awaited — this is what makes "stuck on Scanning…" structurally impossible now, not just less likely.
+- **Debounce/cooldown.** Once a serial is accepted, it won't be re-accepted for 4 seconds even if the loop somehow saw it again immediately — prevents accidental double-reads.
+- **Stops immediately on a valid read.** The `requestAnimationFrame` loop is torn down the instant something is accepted; it restarts when you return to the scan screen (Cancel / Edit / Scan Next Unit).
+- **Frame-rate friendly.** Processing is capped at ~11 frames/sec regardless of camera fps, so the live video preview itself stays smooth at 30-60fps on low-end phones — the cap only limits how often we *analyze* a frame, not how often the video renders.
+- The old **Capture & Scan** button still exists (UI unchanged) but no longer gates scanning — it's now a "best-effort read right now" shortcut for a code that's proving stubborn, handing whatever it finds straight to manual entry for a quick confirm.
+
+**Known limitation:** true deskew (correcting a rotated/tilted label) isn't implemented — the reticle guide is relied on to keep the code roughly horizontal instead. A full perspective-correction pass was out of scope for a client-side, dependency-free implementation; if skewed labels turn out to be common in practice, that's the next thing worth adding.
+
 ## Notes
 
 - The frontend export still produces a real `.xlsx` file in the browser, but it now pulls the full dataset from `GET /api/export`.
