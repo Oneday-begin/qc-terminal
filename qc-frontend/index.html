@@ -258,7 +258,7 @@
 
     <div id="apiFields" class="hidden space-y-2 mb-4">
       <label class="text-xs text-[var(--text-dim)] block mb-1">API Base URL</label>
-      <input id="apiUrl" type="text" class="w-full" placeholder="https://your-service.onrender.com">
+      <input id="apiUrl" type="text" class="w-full" placeholder="https://qc-backend-live.onrender.com" value="https://qc-backend-live.onrender.com">
     </div>
 
     <p class="text-[11px] text-[var(--text-dim)] mb-4 leading-relaxed">
@@ -324,7 +324,7 @@ function createEmptyChecklistState(){
   return {
     batch: null,
     uid: null,
-    tests,
+    tests, 
     notes: '',
     isRetest: false,
     editingRecord: null, // set when an existing record was auto-loaded; drives update vs create on submit
@@ -334,8 +334,8 @@ function createEmptyChecklistState(){
 function loadSettings(){
   return {
     station: localStorage.getItem('qc_station') || '',
-    mode: localStorage.getItem('qc_mode') || 'demo',
-    apiUrl: localStorage.getItem('qc_api_url') || '',
+    mode: localStorage.getItem('qc_mode') || 'api', // Forcing API mode by default
+    apiUrl: localStorage.getItem('qc_api_url') || 'https://qc-backend-live.onrender.com', 
   };
 }
 
@@ -384,7 +384,7 @@ document.getElementById('settingsCloseBtn').onclick = async () => {
   const s = {
     station: stationInput.value.trim() || 'Station 1',
     mode: backendMode.value,
-    apiUrl: apiUrlInput.value.trim().replace(/\/+$/, ''),
+    apiUrl: apiUrlInput.value.trim().replace(/\/+$/, '') || 'https://qc-backend-live.onrender.com',
   };
   saveSettings(s);
   stationLabel.textContent = 'Station: ' + s.station;

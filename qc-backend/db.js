@@ -10,6 +10,10 @@ function createPool() {
       connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10),
       queueLimit: 0,
       timezone: 'Z',
+      // This line forces TiDB to use an encrypted connection
+      ssl: {
+        rejectUnauthorized: false
+      }
     });
   }
 
@@ -23,6 +27,10 @@ function createPool() {
     connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10),
     queueLimit: 0,
     timezone: 'Z',
+    // Fallback security rule
+    ssl: {
+      rejectUnauthorized: false
+    }
   });
 }
 
