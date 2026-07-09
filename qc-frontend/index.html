@@ -782,10 +782,12 @@ function acceptCandidate(parsed, confidence, box){
   if (serial === lastAcceptedSerial && (now - lastAcceptedAt) < REACCEPT_COOLDOWN_MS) return;
   lastAcceptedSerial = serial;
   lastAcceptedAt = now;
+  
   drawDetectionBox(box, confidence, true);
-  stopScannerEngine(); // "stop scanning immediately after a valid code is detected"
-  manualHint.classList.add('hidden');
-  openChecklist(parsed.batch, parsed.uid); // async — duplicate lookup runs after the screen switches, banner shows progress
+  stopScannerEngine(); 
+  
+  // Send the result to the manual entry box for confirmation instead of jumping screens
+  openManualCorrection('Auto-scan complete — please confirm the numbers.', parsed.batch, parsed.uid);
 }
 
 function setupZoomControl(stream){
@@ -976,10 +978,14 @@ async function startCamera(){
       stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
     video.srcObject = stream;
-    setupZoomControl(stream);
     
-    await prepareAutoFocus();
+    // 1. Force the camera hardware to wake up and start playing FIRST
     await video.play().catch(() => {});
+    
+    // 2. NOW apply the zoom and autofocus settings
+    setupZoomControl(stream);
+    await prepareAutoFocus();
+    
     syncDetectionCanvasSize();
     window.addEventListener('resize', syncDetectionCanvasSize);
     startScannerEngine();
@@ -998,34 +1004,31 @@ async function startCamera(){
 startCamera();
 
 function parseSerialCandidate(rawText, reuseBatch = ''){
+  // Clean up common OCR mistakes (like reading the letter O instead of the number 0)
   const cleaned = rawText
     .toUpperCase()
     .replace(/[OQ]/g, '0')
     .replace(/[ILS]/g, m => ({ I:'1', L:'1', S:'5' }[m]));
-  const tokens = cleaned.split(/[^0-9]+/).filter(Boolean);
-  if (tokens.length >= 2){
-    for (let i = tokens.length - 1; i > 0; i--){
-      const uidTok = tokens[i];
-      const batchTok = tokens[i - 1];
-      if (uidTok.length === 3 && batchTok.length === 4){
-        return { batch: batchTok, uid: uidTok, strict: true, reused: false };
-      }
-    }
+
+  // 1. THE SMART EXTRACTOR
+  // This looks specifically for: 4 numbers, any symbol/space, and 3 numbers.
+  // It completely ignores the "06-101-01-05" prefix because it doesn't match the 4+3 pattern.
+  const match = cleaned.match(/([0-9]{4})[^0-9]*([0-9]{3})(?![0-9])/);
+  
+  if (match) {
+    return { batch: match[1], uid: match[2], strict: true, reused: false };
   }
-  // Batch reuse: if we already know today's batch and the frame only
-  // shows a clean isolated 3-digit UID (common once the operator has
-  // zoomed into just the UID half of the code), reuse the known batch
-  // instead of asking the operator to re-scan the whole thing.
-  if (reuseBatch && reuseBatch.length === 4){
-    const uidOnly = tokens.find(t => t.length === 3);
-    if (uidOnly && tokens.every(t => t.length !== 4)){
-      return { batch: reuseBatch, uid: uidOnly, strict: true, reused: true };
-    }
-  }
+
+  // 2. BATCH REUSE (For tight zooms)
+  // If the operator zooms in so tight that the camera only sees the 3-digit UID,
+  // we can just reuse the batch from the previous successful scan.
   const digitsOnly = cleaned.replace(/[^0-9]/g, '');
-  if (digitsOnly.length < 7) return null;
-  const last7 = digitsOnly.slice(-7);
-  return { batch: last7.slice(0, 4), uid: last7.slice(4), strict: true, reused: false };
+  if (reuseBatch && reuseBatch.length === 4 && digitsOnly.length === 3){
+    return { batch: reuseBatch, uid: digitsOnly, strict: true, reused: true };
+  }
+
+  // If it didn't find the 4+3 pattern or a 3-digit UID, reject the frame.
+  return null;
 }
 
 /* ------------------------------------------------------------
@@ -1154,7 +1157,6 @@ function preprocessForOcr(targetCanvas){
   const imgData = ctx.getImageData(0, 0, width, height);
   const d = imgData.data;
   
-  // 1. Find the darkest and lightest pixels in the frame
   let min = 255, max = 0;
   for (let i = 0; i < d.length; i += 4) {
     const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
@@ -1163,7 +1165,6 @@ function preprocessForOcr(targetCanvas){
     if (g > max) max = g;
   }
   
-  // 2. Stretch the contrast to max so the numbers pop out clearly
   const range = Math.max(1, max - min);
   for (let i = 0; i < d.length; i += 4) {
     const stretched = ((d[i] - min) / range) * 255;
@@ -1274,13 +1275,24 @@ captureBtn.addEventListener('click', async () => {
     const ocrRoi = cropToReticle(raw, hwZoomCapable ? 1 : currentZoom, 'ocr');
     const worker = await getOcrWorker();
     const { data } = await withOcrTimeout(worker.recognize(ocrRoi), 10000);
+    
+    // First, try the strict auto-scanner pattern
     const parsed = parseSerialCandidate(data.text || '', getLastBatch());
     
     if (parsed) {
-      openManualCorrection('Best-effort read — please confirm.', parsed.batch, parsed.uid);
+      openManualCorrection('Perfect read — please confirm.', parsed.batch, parsed.uid);
     } else {
-      // Tell us exactly what wrong text it found
-      openManualCorrection(`Failed. OCR saw: "${data.text.trim()}"`, '', '');
+      // YELLOW BUTTON FALLBACK:
+      // If the strict pattern fails, grab whatever numbers it saw and guess the last 7
+      const cleaned = (data.text || '').toUpperCase().replace(/[OQ]/g, '0').replace(/[ILS]/g, m => ({ I:'1', L:'1', S:'5' }[m]));
+      const digitsOnly = cleaned.replace(/[^0-9]/g, '');
+      
+      if (digitsOnly.length >= 7) {
+         const last7 = digitsOnly.slice(-7);
+         openManualCorrection('Rough read — please check for typos.', last7.slice(0, 4), last7.slice(4));
+      } else {
+         openManualCorrection(`Failed. OCR only saw: "${data.text.trim()}"`, '', '');
+      }
     }
   } catch(_err){
     if (_err.message === 'OCR timed out' && ocrWorkerPromise) {
