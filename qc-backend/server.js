@@ -259,6 +259,31 @@ app.get('/api/logs', async (_req, res, next) => {
   }
 });
 
+// SECURE LOGIN ROUTE
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  // These passwords live safely on the server, invisible to the browser
+  const SECURE_USERS = {
+    admin: { password: 'admin123', role: 'admin', label: 'Administrator' },
+    qa:    { password: 'qa123',    role: 'qa',    label: 'Quality Analyst' },
+    qm:    { password: 'qm123',    role: 'qm',    label: 'Quality Manager' }
+  };
+
+  const user = SECURE_USERS[String(username).trim().toLowerCase()];
+
+  if (!user || user.password !== password) {
+    return res.status(401).json({ message: 'Invalid username or password.' });
+  }
+
+  // Send back the user details (but NOT the password!)
+  res.json({
+    username,
+    role: user.role,
+    label: user.label
+  });
+});
+
 app.get('/api/log/:serial', async (req, res, next) => {
   try {
     const serial = String(req.params.serial || '').trim();
