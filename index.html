@@ -229,7 +229,9 @@
     <div class="text-xs stencil text-[var(--text-dim)] mb-2">Quality Overview</div>
     <div id="dashboardStats" class="grid grid-cols-2 gap-3 mb-4"></div>
     <div class="text-xs stencil text-[var(--text-dim)] mb-2">Pending Approval</div>
-    <div id="approvalList" class="space-y-2"></div>
+    <div id="approvalList" class="space-y-2 mb-4"></div>
+    <div class="text-xs stencil text-[var(--text-dim)] mb-2">Rejected Products</div>
+    <div id="rejectedList" class="space-y-2"></div>
   </section>
 
   <section id="checklistScreen" class="hidden">
@@ -444,11 +446,15 @@ settingsBtn.onclick = openSettings;
 backendMode.onchange = refreshBackendFieldVisibility;
 
 document.getElementById('settingsCloseBtn').onclick = async () => {
-  const stationValue = stationInput.value.trim();
+  let stationValue = stationInput.value.trim();
+  
+  // Fixes "station 1" vs "Station 1" by forcing proper capitalization
+  stationValue = stationValue.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
   if (!stationValue){
     showToast('Station Name/Number is required before continuing', 'fail');
     stationInput.focus();
-    return; // strict rule: refuse to close until a station is actually entered
+    return; 
   }
   const s = {
     station: stationValue,
@@ -458,7 +464,7 @@ document.getElementById('settingsCloseBtn').onclick = async () => {
   saveSettings(s);
   stationLabel.textContent = 'Station: ' + s.station;
   settingsModal.classList.add('hidden');
-  await applyAuthGate(); // resumes boot now that the station gate is satisfied
+  await applyAuthGate(); 
 };
 
 stationLabel.textContent = 'Station: ' + (loadSettings().station || '-');
@@ -833,6 +839,8 @@ function normalizeHistoryItem(row){
     moulding: row.moulding || row.moulding_color || '',
     golden_coating: row.golden_coating === 'Glossy' ? 'Bright' : (row.golden_coating || row.golden || ''),
     qm_approved: row.qm_approved === true || row.qm_approved === 'true',
+    qm_status: row.qm_status || (row.qm_approved === true || row.qm_approved === 'true' ? 'APPROVED' : 'PENDING'),
+    plug_socket_remark: row.plug_socket_remark || '',
     plug_socket_remark: row.plug_socket_remark || '',
     seal_remark: row.seal_remark || '',
     visual_remark: row.visual_remark || '',
@@ -1952,30 +1960,6 @@ function buildHistorySummary(item){
 }
 
 function renderHistoryBody(host, item){
-  const top = document.createElement('div');
-  top.className = 'grid grid-cols-2 gap-2 mb-3';
-  buildHistorySummary(item).forEach(summary => {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'rounded border border-[var(--line)] bg-[var(--panel-raised)] px-2 py-2 text-left';
-    chip.innerHTML = `<div class="text-[10px] text-[var(--text-dim)]">${summary.label}</div><div class="text-[11px] mt-1">${summary.value}</div>`;
-    if (['plug_socket','seal','visual','insert_glue','rotation','labelling','serial_number_check'].includes(summary.key)){
-      chip.addEventListener('click', async () => {
-        const key = summary.key;
-        if (item[key] === 'Pass'){
-          const remark = window.prompt('Reason for marking "Not Confirmed":', item[key + '_remark'] || '');
-          if (remark === null) return; // cancelled — leave unchanged
-          if (!remark.trim()){ showToast('A remark is required for Not Confirmed', 'fail'); return; }
-          await patchHistoryItem(item, { [key]: 'NotConfirmed', [key + '_remark']: remark.trim() });
-        } else {
-          await patchHistoryItem(item, { [key]: 'Pass', [key + '_remark']: '' });
-        }
-      });
-    }
-    top.appendChild(chip);
-  });
-  host.appendChild(top);
-
   PARAMS.forEach(param => {
     const block = document.createElement('div');
     block.className = 'mb-3';
@@ -2092,6 +2076,8 @@ renderHistory = function(){
     row.className = 'param-card';
     const color = item.overall_status === 'PASS' ? 'var(--green)' : 'var(--red)';
     const stamp = `${new Date(item.timestamp).toLocaleString()}${item.is_retest ? ' | re-test' : ''}`;
+    const qmColor = item.qm_status === 'APPROVED' ? 'var(--green)' : item.qm_status === 'REJECTED' ? 'var(--red)' : 'var(--amber)';
+    
     row.innerHTML = `
       <button type="button" class="w-full text-left flex items-center justify-between gap-3" data-toggle>
         <div>
@@ -2100,7 +2086,7 @@ renderHistory = function(){
         </div>
         <div class="text-right">
           <div class="stencil text-sm" style="color:${color}">${item.overall_status}</div>
-          <div class="text-[10px] text-[var(--text-dim)] mt-1">Tap to edit</div>
+          <div class="text-[10px] mt-1 font-bold" style="color:${qmColor}">${item.qm_status || 'PENDING'}</div>
         </div>
       </button>
       <div class="mt-3 pt-3 border-t border-[var(--line)] ${item.expanded ? '' : 'hidden'}" data-body></div>
@@ -2170,11 +2156,17 @@ const dashboardStats = document.getElementById('dashboardStats');
 const approvalList = document.getElementById('approvalList');
 
 function renderDashboard(){
+  const dashboardStats = document.getElementById('dashboardStats');
+  const approvalList = document.getElementById('approvalList');
+  const rejectedList = document.getElementById('rejectedList');
+  
   const stationCounts = {};
   const today = new Date().toISOString().slice(0, 10);
-  let todayPass = 0, todayFail = 0;
+  let todayPass = 0, todayFail = 0, totalRejected = 0;
+  
   historyCache.forEach(item => {
     stationCounts[item.test_station] = (stationCounts[item.test_station] || 0) + 1;
+    if (item.qm_status === 'REJECTED') totalRejected++;
     if ((item.timestamp || '').slice(0, 10) === today){
       if (item.overall_status === 'PASS') todayPass++; else todayFail++;
     }
@@ -2182,9 +2174,9 @@ function renderDashboard(){
 
   const cards = [
     { label: 'Total Records', value: historyCache.length },
+    { label: 'Total Rejected', value: totalRejected },
     { label: "Today's Pass", value: todayPass },
     { label: "Today's Fail", value: todayFail },
-    { label: 'Stations Active', value: Object.keys(stationCounts).length },
   ];
   const stationRows = Object.entries(stationCounts)
     .sort((a, b) => b[1] - a[1])
@@ -2205,34 +2197,65 @@ function renderDashboard(){
 
   if (!canApprove()){
     approvalList.innerHTML = '<div class="param-card text-[12px] text-[var(--text-dim)]">Approval actions are available to Quality Managers.</div>';
+    if(rejectedList) rejectedList.innerHTML = '';
     return;
   }
 
-  const pending = historyCache.filter(i => !i.qm_approved).slice(0, 30);
+  // Render Pending List
+  const pending = historyCache.filter(i => i.qm_status === 'PENDING' || !i.qm_status).slice(0, 30);
   approvalList.innerHTML = pending.length ? '' : '<div class="param-card text-[12px] text-[var(--text-dim)]">Nothing pending approval.</div>';
   pending.forEach(item => {
     const row = document.createElement('div');
-    row.className = 'param-card flex items-center justify-between';
+    row.className = 'param-card flex items-center justify-between gap-2';
     const color = item.overall_status === 'PASS' ? 'var(--green)' : 'var(--red)';
     row.innerHTML = `
-      <div>
+      <div class="flex-1">
         <div class="text-sm font-semibold tracking-widest">${item.serial_number}</div>
         <div class="text-[11px] text-[var(--text-dim)]">${item.test_station || '-'} · <span style="color:${color}">${item.overall_status}</span></div>
       </div>
-      <button type="button" class="text-xs px-3 py-2 rounded border border-[var(--green)] text-[var(--green)] stencil active:scale-95" data-approve>Approve</button>
+      <div class="flex gap-2">
+        <button type="button" class="text-[10px] px-2 py-2 rounded border border-[var(--red)] text-[var(--red)] stencil active:scale-95" data-reject>REJECT</button>
+        <button type="button" class="text-[10px] px-2 py-2 rounded border border-[var(--green)] text-[var(--green)] stencil active:scale-95" data-approve>APPROVE</button>
+      </div>
     `;
     row.querySelector('[data-approve]').addEventListener('click', async () => {
       try{
-        const saved = await BackendService.update({ ...item, qm_approved: true });
+        const saved = await BackendService.update({ ...item, qm_status: 'APPROVED', qm_approved: true });
         Object.assign(item, saved);
-        showToast('Marked approved', 'pass');
+        showToast('Marked as Approved', 'pass');
         renderDashboard();
-      } catch(err){
-        showToast(err.message || 'Approval failed', 'fail');
-      }
+        renderHistory();
+      } catch(err){ showToast(err.message || 'Approval failed', 'fail'); }
+    });
+    row.querySelector('[data-reject]').addEventListener('click', async () => {
+      try{
+        const saved = await BackendService.update({ ...item, qm_status: 'REJECTED', qm_approved: false });
+        Object.assign(item, saved);
+        showToast('Product Rejected', 'fail');
+        renderDashboard();
+        renderHistory();
+      } catch(err){ showToast(err.message || 'Rejection failed', 'fail'); }
     });
     approvalList.appendChild(row);
   });
+
+  // Render Rejected List
+  if(rejectedList) {
+    const rejectedItems = historyCache.filter(i => i.qm_status === 'REJECTED').slice(0, 30);
+    rejectedList.innerHTML = rejectedItems.length ? '' : '<div class="param-card text-[12px] text-[var(--text-dim)]">No rejected products.</div>';
+    rejectedItems.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'param-card flex items-center justify-between gap-2 border-l-4 border-l-[var(--red)]';
+      row.innerHTML = `
+        <div>
+          <div class="text-sm font-semibold tracking-widest text-[var(--red)]">${item.serial_number}</div>
+          <div class="text-[11px] text-[var(--text-dim)]">${item.test_station || '-'} · ${new Date(item.timestamp).toLocaleDateString()}</div>
+        </div>
+        <div class="stencil text-[10px] text-[var(--text-dim)]">REJECTED</div>
+      `;
+      rejectedList.appendChild(row);
+    });
+  }
 }
 
 exportToExcel = async function(){

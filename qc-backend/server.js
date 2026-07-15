@@ -28,6 +28,7 @@ const ALL_COLUMNS = [
   'test_station',
   'is_retest',
   'overall_status',
+  'qm_status',
   'notes',
   ...CHECK_FIELDS,
   ...REMARK_FIELDS,
@@ -79,6 +80,7 @@ function pickRow(row) {
     test_station: row.test_station,
     is_retest: Boolean(row.is_retest),
     overall_status: row.overall_status,
+    qm_status: row.qm_status || 'PENDING',
     notes: row.notes || '',
     plug_socket: row.plug_socket,
     plug_socket_remark: row.plug_socket_remark || '',
@@ -161,6 +163,7 @@ function validatePayload(body, expectedSerial) {
     test_station: requireString(body.test_station, 'test_station', 120),
     is_retest: normalizeBoolean(body.is_retest),
     overall_status: requireEnum(body.overall_status, 'overall_status', ['PASS', 'FAIL']),
+    qm_status: requireEnum(body.qm_status || 'PENDING', 'qm_status', ['PENDING', 'APPROVED', 'REJECTED']),
     notes: typeof body.notes === 'string' ? body.notes.trim() : '',
   };
 
