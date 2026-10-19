@@ -1,5 +1,6 @@
 CREATE DATABASE qc_terminal;
 USE qc_terminal;
+
 CREATE TABLE IF NOT EXISTS qc_logs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   serial_number CHAR(7) NOT NULL,
