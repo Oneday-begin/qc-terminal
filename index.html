@@ -100,7 +100,7 @@
     transform:rotate(-6deg);
     text-transform:uppercase;
   }
-  input[type=text], input[type=number], input[type=password] {
+  input[type=text], input[type=number], input[type=password], input[type=date], select {
     background: var(--panel-raised) !important;
     border: 2px solid var(--line);
     color: var(--text) !important;
@@ -109,14 +109,22 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 15px;
   }
-  input[type=text], input[type=number], input[type=password] {
-    background: var(--panel-raised) !important;
-    border: 2px solid var(--line);
-    color: var(--text) !important;
-    border-radius: 6px;
-    padding: 12px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 15px;
+  input:focus-visible, select:focus-visible, button:focus-visible{outline:2px solid var(--amber);outline-offset:3px;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  header{gap:16px;flex-wrap:wrap;}
+  header > div{min-width:0;}
+  header > div:last-child{flex-wrap:wrap;justify-content:flex-end;}
+  #userBadge{max-width:220px;overflow-wrap:anywhere;}
+  #loginModal{overflow-y:auto;background:radial-gradient(ellipse at top,rgba(245,166,35,.12),transparent 65%),rgba(0,0,0,.93);}
+  #loginModal > .param-card{padding:28px;width:min(100%,420px);max-height:calc(100dvh - 32px);overflow-y:auto;border-radius:16px;border-top:3px solid var(--amber);box-shadow:0 24px 70px #0008;}
+  #loginModal input,#loginModal select{min-height:48px;font-size:16px;}
+  #loginModal label{margin-top:12px;}
+  #loginModal .stencil.text-lg{font-size:24px;}
+  #loginSubmitBtn{min-height:48px;}
+  @media(max-width:540px){
+    header > div:last-child{width:100%;justify-content:flex-start;gap:8px;}
+    #userBadge{flex:1;max-width:none;}
+    #loginModal > .param-card{padding:20px;}
   }
 </style>
 </head>
@@ -276,14 +284,21 @@
 </main>
 </div>
 
-<div id="loginModal" class="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+<div id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle" class="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
   <div class="w-full max-w-sm param-card">
-    <div class="stencil text-lg mb-1">QC Terminal Login</div>
+    <div id="loginTitle" class="stencil text-lg mb-1">QC Terminal Login</div>
     <div class="text-[11px] text-[var(--text-dim)] mb-4">Sign in to continue</div>
-    <label class="text-xs text-[var(--text-dim)] block mb-1">Username</label>
+    <label for="loginRole" class="text-xs text-[var(--text-dim)] block mb-1">Choose your role</label>
+    <select id="loginRole" class="w-full mb-3" required>
+      <option value="">Select QA, QM or Admin</option>
+      <option value="qa">QA - Quality Analyst</option>
+      <option value="qm">QM - Quality Manager</option>
+      <option value="admin">Admin - Administrator</option>
+    </select>
+    <label for="loginUsername" class="text-xs text-[var(--text-dim)] block mb-1">Username</label>
     <input id="loginUsername" type="text" class="w-full mb-3" autocomplete="username">
     
-    <label class="text-xs text-[var(--text-dim)] block mb-1">Password</label>
+    <label for="loginPassword" class="text-xs text-[var(--text-dim)] block mb-1">Password</label>
     <div style="position: relative; margin-bottom: 0.5rem;">
       <input id="loginPassword" type="password" class="w-full" style="padding-right: 48px;" autocomplete="current-password" placeholder="••••••••">
       <button id="togglePassVisibility" type="button" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-dim); width: 24px; height: 24px;" aria-label="Toggle password visibility">
@@ -502,13 +517,15 @@ function authenticate(username, password){
   return { username: key, role: record.role, label: record.label };
 }
 
-function canScan(){ return !!currentUser && currentUser.role !== 'qm'; }
+function canScan(){ return !!currentUser && ['admin','qa'].includes(currentUser.role); }
 function canDelete(){ return !!currentUser && currentUser.role === 'admin'; }
 function canApprove(){ return !!currentUser && currentUser.role === 'qm'; }
 
 const appShell = document.getElementById('appShell');
 const loginModal = document.getElementById('loginModal');
 const loginUsername = document.getElementById('loginUsername');
+const loginRole = document.getElementById('loginRole');
+let loginBusy = false;
 const loginPassword = document.getElementById('loginPassword');
 const loginError = document.getElementById('loginError');
 const navTabs = document.getElementById('navTabs');
@@ -519,6 +536,15 @@ const dashboardScreen = document.getElementById('dashboardScreen');
 
 // Replace your old frontend validation function with this secure server request
 async function attemptLogin() {
+  if (loginBusy) return;
+  const selectedRole = loginRole.value;
+  if (!selectedRole || !loginUsername.value.trim() || !loginPassword.value){
+    loginError.textContent = 'Choose a role and enter your username and password.';
+    loginError.classList.remove('hidden');
+    return;
+  }
+  loginBusy = true;
+  document.getElementById('loginSubmitBtn').disabled = true;
   const username = loginUsername.value;
   const password = loginPassword.value;
   const s = loadSettings(); // Get the API URL from settings
@@ -533,8 +559,8 @@ async function attemptLogin() {
 
     const data = await res.json();
 
-    if (!res.ok) {
-      loginError.textContent = data.message || 'Invalid credentials.';
+    if (!res.ok || data.role !== selectedRole) {
+      loginError.textContent = data.message || 'Credentials do not match the selected role.';
       loginError.classList.remove('hidden');
       return;
     }
@@ -549,6 +575,9 @@ async function attemptLogin() {
   } catch (err) {
     loginError.textContent = 'Server connection error. Please try again.';
     loginError.classList.remove('hidden');
+  } finally {
+    loginBusy = false;
+    document.getElementById('loginSubmitBtn').disabled = false;
   }
 }
 
@@ -589,6 +618,7 @@ logoutBtn.addEventListener('click', () => {
   userBadge.textContent = '';
   exportBtn.disabled = true;
   loginUsername.value = '';
+  loginRole.value = '';
   loginPassword.value = '';
   loginModal.classList.remove('hidden');
   loginPassword.type = 'password';
@@ -962,7 +992,9 @@ function stopScannerEngine(){
 }
 
 function scannerGuiBlocked(){
-  return scanScreen.classList.contains('hidden')
+  return !canScan() || appShell.classList.contains('hidden')
+    || !settingsModal.classList.contains('hidden')
+    || scanScreen.classList.contains('hidden')
     || !checklistScreen.classList.contains('hidden')
     || !manualEntry.classList.contains('hidden');
 }
@@ -980,7 +1012,9 @@ function scannerTick(timestamp){
 }
 
 async function processRoiFrame(){
-  if (!video.videoWidth || !video.videoHeight) return;
+  if (ocrBusy || !engineActive || scannerGuiBlocked() || !video.videoWidth || !video.videoHeight) return;
+  ocrBusy = true;
+  try{
   const raw = captureVideoFrame(canvas);
 
   // 1) Barcode path — cheap enough to try on every processed frame.
@@ -990,29 +1024,21 @@ async function processRoiFrame(){
       const codes = await barcodeDetector.detect(barcodeRoi);
       if (codes && codes.length){
         const parsed = parseSerialCandidate(codes[0].rawValue || '', getLastBatch());
-        if (parsed && parsed.strict){
+        if (parsed && parsed.strict && engineActive && !scannerGuiBlocked()){
           acceptCandidate(parsed, 100, null);
           return;
         }
       }
     } catch(_err){
-    if (_err.message === 'OCR timed out' && ocrWorkerPromise) {
-      ocrWorkerPromise.then(w => w.terminate()).catch(()=>{});
-      ocrWorkerPromise = null; // Kills the jammed worker and forces a reboot
+      // Unsupported or unreadable barcodes fall through to OCR.
     }
-    registerWeakFrame();
-  } finally {
-    ocrBusy = false;
-  }
   }
 
   // 2) OCR fallback — only one recognize() in flight at a time.
-  if (ocrBusy) return;
-  ocrBusy = true;
-  try{
     const ocrRoi = cropToReticle(raw, hwZoomCapable ? 1 : currentZoom, 'ocr');
     const worker = await getOcrWorker();
     const { data } = await withOcrTimeout(worker.recognize(ocrRoi));
+    if (!engineActive || scannerGuiBlocked()) return;
     const parsed = parseSerialCandidate(data.text || '', getLastBatch());
     const confidence = data.words?.length
       ? data.words.reduce((sum, word) => sum + Number(word.confidence || 0), 0) / data.words.length
@@ -1042,6 +1068,11 @@ async function processRoiFrame(){
       registerWeakFrame(); // still not accepted yet — counts toward the manual-entry nudge
     }
   } catch(_err){
+    if (_err.message === 'OCR timed out'){
+      const failedWorker = ocrWorkerPromise;
+      ocrWorkerPromise = null;
+      failedWorker?.then(worker => worker.terminate()).catch(()=>{});
+    }
     // Timed out or failed to recognize — never freeze; just drop this
     // frame, the next tick tries again automatically.
     registerWeakFrame();
@@ -1266,11 +1297,13 @@ async function startCamera(){
     
     // 2. NOW apply the zoom and autofocus settings
     setupZoomControl(stream);
+    await applyBestResolution();
     await prepareAutoFocus();
     
     syncDetectionCanvasSize();
     window.addEventListener('resize', syncDetectionCanvasSize);
     startScannerEngine();
+    captureBtn.disabled = false;
     camStatus.textContent = 'Camera ready — scanning automatically';
     setTimeout(() => camStatus.classList.add('hidden'), 1500);
   } catch(err){
@@ -1480,7 +1513,7 @@ function getOcrWorker(){
         preserve_interword_spaces: '1',
       });
       return worker;
-    })();
+    })().catch(error => { ocrWorkerPromise = null; throw error; });
   }
   return ocrWorkerPromise;
 }
@@ -1504,10 +1537,11 @@ function extractDetectionBox(data, processedCanvas){
 }
 
 function withOcrTimeout(promise, ms = OCR_TIMEOUT_MS){
+  let timer;
   return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('OCR timed out')), ms)),
-  ]);
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('OCR timed out')), ms); }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 const batchReuseBar = document.getElementById('batchReuseBar');
@@ -1552,13 +1586,15 @@ function openManualCorrection(message, batch = '', uid = ''){
 // manual entry for a quick human confirm rather than making the
 // operator type all 7 digits from scratch.
 captureBtn.addEventListener('click', async () => {
-  if (!video.videoWidth) return;
+  if (!canScan() || scannerGuiBlocked() || !video.videoWidth || ocrBusy) return;
+  ocrBusy = true;
   captureBtn.disabled = true;
   try {
     const raw = captureVideoFrame(canvas);
     const ocrRoi = cropToReticle(raw, hwZoomCapable ? 1 : currentZoom, 'ocr');
     const worker = await getOcrWorker();
     const { data } = await withOcrTimeout(worker.recognize(ocrRoi), 10000);
+    if (scannerGuiBlocked()) return;
     
     // First, try the strict auto-scanner pattern
     const parsed = parseSerialCandidate(data.text || '', getLastBatch());
@@ -1585,7 +1621,8 @@ captureBtn.addEventListener('click', async () => {
     }
     openManualCorrection(`OCR crashed or timed out: ${_err.message}`, '', '');
   } finally {
-    captureBtn.disabled = false;
+    ocrBusy = false;
+    captureBtn.disabled = !canScan() || !video.srcObject;
   }
 });
 
